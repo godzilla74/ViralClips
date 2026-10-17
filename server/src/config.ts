@@ -11,6 +11,7 @@ export const DEFAULTS: Settings = {
   provider: 'ollama',
   ollamaModel: 'qwen2.5:14b',
   openaiModel: 'gpt-4o-mini',
+  visionModel: '',
   clipMinSec: 30,
   clipMaxSec: 60,
   clipCount: 10,
@@ -34,7 +35,7 @@ const ENUMS = {
   provider: ['ollama', 'openai'], framing: ['crop', 'blur', 'original'], captionStyle: ['bold', 'clean', 'karaoke'],
 } as const;
 const NUMS: Record<string, [number, number]> = { clipMinSec: [5, 600], clipMaxSec: [10, 900], clipCount: [1, 30] };
-const STRS = ['ollamaModel', 'openaiModel', 'openaiKey'] as const;
+const STRS = ['ollamaModel', 'openaiModel', 'visionModel', 'openaiKey'] as const;
 
 /** Keeps only known fields with valid values; invalid values are dropped (previous value stays). */
 export function sanitize(p: Record<string, unknown> = {}): Partial<Settings> {

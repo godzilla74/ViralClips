@@ -39,4 +39,13 @@ describe('settings', () => {
     expect(saveSettings({ exportDir: '' }, d).exportDir).toBe('');
     expect(loadSettings(tmp()).exportDir).toBe('');
   });
+  it('stores a vision model (default none) and exposes it publicly', () => {
+    const d = tmp();
+    expect(loadSettings(d).visionModel).toBe('');
+    saveSettings({ visionModel: '  gemma3:12b ' }, d);
+    expect(loadSettings(d).visionModel).toBe('gemma3:12b');
+    expect((publicSettings(loadSettings(d)) as Record<string, unknown>).visionModel).toBe('gemma3:12b');
+    expect(saveSettings({ visionModel: 42 } as any, d).visionModel).toBe('gemma3:12b'); // invalid ignored
+    expect(saveSettings({ visionModel: '' }, d).visionModel).toBe(''); // can be cleared
+  });
 });

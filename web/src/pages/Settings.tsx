@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { ExportFolder } from '../components/ExportFolder';
+import { visionOptions } from '../models';
 import { getSettings, listModels, putSettings, type ModelInfo, type Settings as S } from '../api';
 
 export function Settings() {
@@ -56,6 +57,22 @@ export function Settings() {
             works much better (e.g. qwen2.5:14b, llama3.1:8b, mistral-nemo, phi4, gemma3:12b).
           </div>
         )}
+        <label>Vision model <span className="muted small">(for the upcoming screen + face layout feature — not used yet)</span>
+          {(() => {
+            const opts = visionOptions(models, s.provider);
+            return opts.length > 0 || s.visionModel ? (
+              <select value={s.visionModel ?? ''} onChange={(e) => set('visionModel', e.target.value)}>
+                <option value="">None (not set)</option>
+                {s.visionModel && !opts.some((m) => m.name === s.visionModel) && <option value={s.visionModel}>{s.visionModel} (not available)</option>}
+                {opts.map((m) => <option key={m.name} value={m.name}>{m.name}{m.reasoning ? '  ⚠ reasoning (slower)' : '  ✓'}</option>)}
+              </select>
+            ) : (
+              <span className="muted small" style={{ display: 'block', marginTop: 6 }}>
+                No vision-capable model found. For Ollama, try <code>ollama pull gemma3:12b</code>.
+              </span>
+            );
+          })()}
+        </label>
         {modelErr && <div className="banner warn">{modelErr}</div>}
         {s.provider === 'openai' && (
           <label>OpenAI API key {s.hasKey && <span className="pill ready">saved</span>}

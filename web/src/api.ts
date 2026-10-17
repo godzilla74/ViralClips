@@ -3,7 +3,7 @@ export interface Clip { id: string; projectId: string; start: number; end: numbe
 export interface Word { text: string; start: number; end: number }
 export interface Transcript { language: string; duration: number; words: Word[] }
 export interface Settings {
-  provider: 'ollama' | 'openai'; ollamaModel: string; openaiModel: string; openaiKey?: string; hasKey?: boolean;
+  provider: 'ollama' | 'openai'; ollamaModel: string; openaiModel: string; visionModel: string; openaiKey?: string; hasKey?: boolean;
   clipMinSec: number; clipMaxSec: number; clipCount: number; captions: boolean;
   framing: 'crop' | 'blur' | 'original'; captionStyle: 'bold' | 'clean' | 'karaoke'; exportDir: string;
 }

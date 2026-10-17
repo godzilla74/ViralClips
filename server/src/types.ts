@@ -8,6 +8,8 @@ export interface Settings {
   provider: 'ollama' | 'openai';
   ollamaModel: string;
   openaiModel: string;
+  /** Vision-capable model for layout detection ('' = not set). Uses the selected provider. */
+  visionModel: string;
   openaiKey?: string;
   clipMinSec: number;
   clipMaxSec: number;
