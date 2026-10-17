@@ -41,7 +41,7 @@ const STYLES: Record<Style, { size: number; stroke: number; fill: string; active
 };
 
 /** Draws one caption state as a transparent 1080x420 PNG. */
-export function renderSegmentPng(seg: Pick<CaptionSegment, 'words' | 'active'>, style: Style): Buffer {
+export function renderSegmentPng(seg: CaptionSegment, style: Style): Buffer {
   const st = STYLES[style];
   const canvas = createCanvas(CAPTION_W, CAPTION_H);
   const ctx = canvas.getContext('2d');
