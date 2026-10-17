@@ -7,6 +7,8 @@ import { Trimmer } from '../components/Trimmer';
 import { Transcript } from '../components/Transcript';
 import { ExportOptions } from './Settings';
 
+const fmtT = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+
 export function Project({ id }: { id: string }) {
   const [project, setProject] = useState<P | null>(null);
   const [clips, setClips] = useState<Clip[]>([]);
@@ -83,13 +85,24 @@ export function Project({ id }: { id: string }) {
       {clips.length > 0 && (
         <div className="split">
           <div>
+            {activeClip && (
+              <div className="now">
+                <div className="now-top">
+                  <span className="now-label">Now playing</span>
+                  <span className="muted small">{fmtT(activeClip.start)}–{fmtT(activeClip.end)} · {Math.round(activeClip.end - activeClip.start)}s</span>
+                  <span className="pill ready">AI score {Math.round(activeClip.score)}</span>
+                </div>
+                <div className="now-title">{activeClip.title}</div>
+                <div className="small"><b>Why the AI picked it:</b> {activeClip.reason}</div>
+              </div>
+            )}
             <Player ref={video} src={`/api/projects/${id}/video`} clip={activeClip} />
             {activeClip && <Trimmer clip={activeClip} duration={duration} onTrim={(start, end) => edit(activeClip.id, { start, end })} />}
             <Transcript words={transcript?.words ?? []} clip={activeClip} onSeek={(t) => { if (video.current) video.current.currentTime = t; }} />
           </div>
           <div>
             <h3>{clips.length} suggested clips <span className="muted small">(ranked by AI score)</span></h3>
-            <ClipList clips={clips} activeId={active} onSelect={setActive} onChange={edit} />
+            <ClipList clips={clips} words={transcript?.words ?? []} activeId={active} onSelect={setActive} onChange={edit} />
             <section className="panel">
               <h3>Export {selected.length} clip{selected.length === 1 ? '' : 's'} · 1080×1920</h3>
               {opts && <ExportOptions s={opts} set={(k, v) => setOpts({ ...opts, [k]: v })} />}

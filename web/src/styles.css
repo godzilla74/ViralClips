@@ -38,3 +38,11 @@ label.radio { display:flex; gap:8px; align-items:center; color:var(--text); font
 .bar .sel { position:absolute; top:0; bottom:0; background:rgba(124,92,255,.35); } .handle { position:absolute; top:-4px; bottom:-4px; width:10px; margin-left:-5px; background:var(--accent); border-radius:4px; cursor:ew-resize; }
 .transcript { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:14px; max-height:200px; overflow:auto; color:var(--muted); line-height:1.8; } .transcript span { cursor:pointer; } .transcript span.in { color:var(--text); background:rgba(124,92,255,.18); } .transcript span:hover { text-decoration:underline; }
 .exports { margin:12px 0 0; padding-left:18px; }
+
+.now { background:var(--panel); border:1px solid var(--accent); border-radius:12px; padding:12px 16px; margin-bottom:12px; }
+.now-top { display:flex; gap:10px; align-items:center; } .now-label { font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:#b9a9ff; font-weight:700; } .now-top .pill { margin-left:auto; }
+.now-title { font-size:20px; font-weight:700; margin:4px 0; }
+.clip .said { color:var(--text); opacity:.85; font-style:italic; margin-top:4px; } .clip .why { margin-top:2px; }
+.marker { display:inline-block; font-size:11px; font-weight:700; padding:1px 8px; border-radius:99px; margin:0 6px; vertical-align:middle; font-style:normal; }
+.marker.start { background:#123a2b; color:var(--ok); } .marker.end { background:#3a1620; color:var(--bad); }
+.transcript { position:relative; }
