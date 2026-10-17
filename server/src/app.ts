@@ -1,5 +1,7 @@
 import Fastify from 'fastify';
 import multipart from '@fastify/multipart';
+import fastifyStatic from '@fastify/static';
+import { fileURLToPath } from 'node:url';
 import { createReadStream, createWriteStream, existsSync, mkdirSync, readdirSync, statSync } from 'node:fs';
 import { basename, extname, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -229,6 +231,14 @@ export function buildApp(opts: AppOptions = {}) {
       return reply.code(503).send({ error: (e as Error).message });
     }
   });
+
+  // ---- built web UI (production) ----
+  const webDist = fileURLToPath(new URL('../../web/dist', import.meta.url));
+  if (existsSync(join(webDist, 'index.html'))) {
+    app.register(fastifyStatic, { root: webDist });
+    app.setNotFoundHandler((req, reply) =>
+      req.url.startsWith('/api') ? reply.code(404).send({ error: 'Not found' }) : reply.sendFile('index.html'));
+  }
 
   return app;
 }
