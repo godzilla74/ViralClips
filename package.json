@@ -1,0 +1,13 @@
+{
+  "name": "viralclips",
+  "private": true,
+  "type": "module",
+  "workspaces": ["server", "web"],
+  "scripts": {
+    "dev": "concurrently -n server,web \"npm run dev -w server\" \"npm run dev -w web\"",
+    "build": "npm run build -w web",
+    "start": "npm run start -w server",
+    "test": "npm test --workspaces --if-present"
+  },
+  "devDependencies": { "concurrently": "^9.0.0" }
+}
