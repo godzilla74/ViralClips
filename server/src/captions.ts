@@ -1,8 +1,19 @@
-import { createCanvas } from '@napi-rs/canvas';
+import { createCanvas, GlobalFonts } from '@napi-rs/canvas';
+import { createRequire } from 'node:module';
+import { dirname, join } from 'node:path';
 import type { Settings, Word } from './types.js';
 
 export interface CaptionSegment { start: number; end: number; words: string[]; active: number }
 type Style = Settings['captionStyle'];
+
+/** Montserrat ExtraBold (SIL OFL) from npm, so captions are identical on macOS, Windows and Linux. */
+export const CAPTION_FONT = 'ViralClipsCaption';
+try {
+  const pkg = createRequire(import.meta.url).resolve('@fontsource/montserrat/package.json');
+  GlobalFonts.registerFromPath(join(dirname(pkg), 'files', 'montserrat-latin-800-normal.woff'), CAPTION_FONT);
+} catch {
+  // falls back to system fonts below
+}
 
 export const CAPTION_W = 1080;
 export const CAPTION_H = 420;
@@ -45,7 +56,7 @@ export function renderSegmentPng(seg: CaptionSegment, style: Style): Buffer {
   const st = STYLES[style];
   const canvas = createCanvas(CAPTION_W, CAPTION_H);
   const ctx = canvas.getContext('2d');
-  ctx.font = `800 ${st.size}px Arial, Helvetica, sans-serif`;
+  ctx.font = `800 ${st.size}px ${CAPTION_FONT}, Arial, Helvetica, sans-serif`;
   ctx.textBaseline = 'middle';
   ctx.lineJoin = 'round';
   const space = ctx.measureText(' ').width;

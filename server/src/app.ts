@@ -20,7 +20,7 @@ import { transcribe as defaultTranscribe, type Transcriber } from './transcribe.
 import { extractAudio, probe } from './media.js';
 import { exportClip } from './export.js';
 import { pickFolder as defaultPickFolder, pickVideoFile } from './picker.js';
-import { execFile } from 'node:child_process';
+import { revealPath } from './platform.js';
 import type { Settings } from './types.js';
 
 export interface AppOptions {
@@ -63,9 +63,8 @@ export function buildApp(opts: AppOptions = {}) {
     return publicSettings(saveSettings(body, dataDir));
   });
 
-  // Native OS file chooser: browsers can't reveal real file paths, but this server runs on the same Mac.
+  // Native OS file chooser: browsers can't reveal real file paths, but this server runs on the same machine.
   app.post('/api/pick-file', async (_req, reply) => {
-    if (!opts.pickFile && process.platform !== 'darwin') return reply.code(501).send({ error: 'The file chooser is only available on macOS. Paste the file path instead.' });
     try {
       return { path: await (opts.pickFile ?? pickVideoFile)() };
     } catch (e) {
@@ -74,7 +73,6 @@ export function buildApp(opts: AppOptions = {}) {
   });
 
   app.post('/api/pick-folder', async (_req, reply) => {
-    if (!opts.pickFolder && process.platform !== 'darwin') return reply.code(501).send({ error: 'The folder chooser is only available on macOS. Type the folder path instead.' });
     try {
       return { path: await (opts.pickFolder ?? defaultPickFolder)() };
     } catch (e) {
@@ -220,7 +218,7 @@ export function buildApp(opts: AppOptions = {}) {
 
   // ---- export ----
   const defaultExportsDir = (id: string) => join(dataDir, 'exports', id);
-  const reveal = opts.reveal ?? ((path: string) => new Promise<void>((res, rej) => execFile('open', ['-R', path], (e) => (e ? rej(e) : res()))));
+  const reveal = opts.reveal ?? ((path: string) => revealPath(path));
   /** Exports this app made for the project (that still exist). Only these may be downloaded or revealed. */
   const exportedFiles = (id: string) => listExportPaths(db, id).filter((p) => existsSync(p));
   const findExport = (id: string, file: string) => exportedFiles(id).find((p) => basename(p) === file);
@@ -284,7 +282,7 @@ export function buildApp(opts: AppOptions = {}) {
       await reveal(path);
       return { ok: true };
     } catch (e) {
-      return reply.code(500).send({ error: `Could not open Finder: ${(e as Error).message}` });
+      return reply.code(500).send({ error: `Could not open the file manager: ${(e as Error).message}` });
     }
   });
 

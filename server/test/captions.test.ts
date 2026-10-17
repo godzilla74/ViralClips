@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { buildCaptionSegments, renderSegmentPng } from '../src/captions.js';
+import { GlobalFonts } from '@napi-rs/canvas';
+import { buildCaptionSegments, renderSegmentPng, CAPTION_FONT } from '../src/captions.js';
 import type { Word } from '../src/types.js';
 
 const words = (texts: string[], t0 = 10): Word[] => texts.map((text, i) => ({ text, start: t0 + i * 0.4, end: t0 + i * 0.4 + 0.35 }));
@@ -36,5 +37,12 @@ describe('renderSegmentPng', () => {
     const buf = renderSegmentPng({ start: 0, end: 1, words: ['a{b}\\c', 'é', '😀', 'longerwordhere'], active: 1 }, 'karaoke');
     expect(buf.subarray(1, 4).toString()).toBe('PNG');
     expect(buf.readUInt32BE(16)).toBe(1080);
+  });
+});
+
+describe('bundled caption font', () => {
+  it('registers the bundled font so captions look the same on every OS', () => {
+    expect(CAPTION_FONT).toBe('ViralClipsCaption');
+    expect(GlobalFonts.has(CAPTION_FONT)).toBe(true);
   });
 });

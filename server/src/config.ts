@@ -1,5 +1,6 @@
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { isAbsolute, join } from 'node:path';
+import { cleanDir } from './platform.js';
 import { fileURLToPath } from 'node:url';
 import type { Settings } from './types.js';
 
@@ -46,8 +47,8 @@ export function sanitize(p: Record<string, unknown> = {}): Partial<Settings> {
   for (const k of STRS) if (typeof p[k] === 'string') out[k] = (p[k] as string).trim().slice(0, 300);
   if (typeof p.captions === 'boolean') out.captions = p.captions;
   if (typeof p.exportDir === 'string') {
-    const d = p.exportDir.trim().replace(/(.)\/+$/, '$1');
-    if (d === '' || (d.startsWith('/') && d.length <= 1000 && !d.includes('\0'))) out.exportDir = d; // relative paths are rejected
+    const d = cleanDir(p.exportDir.trim());
+    if (d === '' || (isAbsolute(d) && d.length <= 1000 && !d.includes('\0'))) out.exportDir = d; // relative paths are rejected
   }
   return out as Partial<Settings>;
 }

@@ -1,6 +1,7 @@
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { whisperBinary } from './deps.js';
 import { runProc } from './media.js';
 import type { Transcript, Word } from './types.js';
 
@@ -37,7 +38,7 @@ export const transcribe: Transcriber = async (wavPath, { modelPath, onProgress }
   const dir = mkdtempSync(join(tmpdir(), 'vc-whisper-'));
   const base = join(dir, 'out');
   try {
-    await runProc('whisper-cli', ['-m', modelPath, '-f', wavPath, '-ojf', '-of', base, '-ml', '1', '-sow', '-pp'], (chunk) => {
+    await runProc(whisperBinary(), ['-m', modelPath, '-f', wavPath, '-ojf', '-of', base, '-ml', '1', '-sow', '-pp'], (chunk) => {
       const m = [...chunk.matchAll(/progress\s*=\s*(\d+)%/g)].pop();
       if (m) onProgress(Number(m[1]));
     });

@@ -11,6 +11,7 @@
   "dependencies": {
     "@fastify/multipart": "^9.0.0",
     "@fastify/static": "^10.1.6",
+    "@fontsource/montserrat": "^5.3.0",
     "@napi-rs/canvas": "^1.0.11",
     "better-sqlite3": "^11.5.0",
     "fastify": "^5.0.0"

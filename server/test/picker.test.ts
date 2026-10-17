@@ -8,31 +8,33 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-describe('pickVideoFile', () => {
+const mac = process.platform === 'darwin';
+
+describe('pickVideoFile (macOS)', () => {
   it('returns the chosen POSIX path, trimmed (spaces and unicode intact)', async () => {
     const run = async () => ({ stdout: '/Users/me/My Movies/café talk.mp4\n' });
-    expect(await pickVideoFile(run)).toBe('/Users/me/My Movies/café talk.mp4');
+    expect(await pickVideoFile(run, 'darwin')).toBe('/Users/me/My Movies/café talk.mp4');
   });
   it('returns null when the user cancels (osascript error -128)', async () => {
     const run = async () => { throw Object.assign(new Error('fail'), { stderr: 'execution error: User canceled. (-128)' }); };
-    expect(await pickVideoFile(run)).toBeNull();
+    expect(await pickVideoFile(run, 'darwin')).toBeNull();
   });
   it('throws a readable error for other failures', async () => {
     const run = async () => { throw Object.assign(new Error('fail'), { stderr: 'boom' }); };
-    await expect(pickVideoFile(run)).rejects.toThrow(/file chooser/i);
+    await expect(pickVideoFile(run, 'darwin')).rejects.toThrow(/file chooser/i);
   });
-  it('uses an AppleScript that compiles', () => {
+  it.skipIf(!mac)('uses an AppleScript that compiles', () => {
     execFileSync('osacompile', ['-o', join(mkdtempSync(join(tmpdir(), 'vc-')), 'x.scpt'), '-e', PICK_SCRIPT]);
   });
 });
 
 describe('pickFolder', () => {
   it('returns the folder path without a trailing slash; null on cancel', async () => {
-    expect(await pickFolder(async () => ({ stdout: '/Users/me/Movies/My Shorts/\n' }))).toBe('/Users/me/Movies/My Shorts');
+    expect(await pickFolder(async () => ({ stdout: '/Users/me/Movies/My Shorts/\n' }), 'darwin')).toBe('/Users/me/Movies/My Shorts');
     const cancel = async () => { throw Object.assign(new Error('x'), { stderr: 'User canceled. (-128)' }); };
-    expect(await pickFolder(cancel)).toBeNull();
+    expect(await pickFolder(cancel, 'darwin')).toBeNull();
   });
-  it('uses an AppleScript that compiles', () => {
+  it.skipIf(!mac)('uses an AppleScript that compiles', () => {
     execFileSync('osacompile', ['-o', join(mkdtempSync(join(tmpdir(), 'vc-')), 'y.scpt'), '-e', PICK_FOLDER_SCRIPT]);
   });
 });

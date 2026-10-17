@@ -1,40 +1,32 @@
-import { execFile } from 'node:child_process';
+import { cleanDir, execRunner, pickerCommands, type PickKind, type Platform, type Runner } from './platform.js';
 
-/** Native macOS file chooser. System Events is activated so the dialog comes to the front. */
-export const PICK_SCRIPT = `tell application "System Events" to activate
-set f to choose file with prompt "Choose a video for ViralClips" of type {"public.movie", "public.mpeg-4", "com.apple.quicktime-movie"}
-POSIX path of f`;
+export { MAC_PICK_FILE as PICK_SCRIPT, MAC_PICK_FOLDER as PICK_FOLDER_SCRIPT } from './platform.js';
+export type { Runner } from './platform.js';
 
-export const PICK_FOLDER_SCRIPT = `tell application "System Events" to activate
-set f to choose folder with prompt "Choose where to save exported clips"
-POSIX path of f`;
-
-export type Runner = () => Promise<{ stdout: string }>;
-
-const osascript = (script: string): Runner => () =>
-  new Promise((resolve, reject) =>
-    execFile('osascript', ['-e', script], { timeout: 10 * 60_000 }, (err, stdout, stderr) =>
-      err ? reject(Object.assign(err, { stderr })) : resolve({ stdout })));
+async function pick(kind: PickKind, run: Runner, platform: Platform): Promise<string | null> {
+  const what = kind === 'file' ? 'file' : 'folder';
+  let missing = 0;
+  const cmds = pickerCommands(platform, kind);
+  for (const c of cmds) {
+    try {
+      const { stdout } = await run(c);
+      const p = stdout.trim();
+      return p ? (kind === 'folder' ? cleanDir(p) : p) : null; // no output = cancelled (Windows)
+    } catch (e) {
+      const { code, stderr } = e as { code?: number | string; stderr?: string };
+      if (code === 'ENOENT') { missing++; continue; } // chooser not installed: try the next one
+      if (String(stderr ?? '').includes('-128')) return null; // macOS: user cancelled
+      if (platform === 'linux' && code === 1) return null; // zenity/kdialog: cancelled
+      throw new Error(`Could not open the ${what} chooser. ${kind === 'file' ? 'Paste the file path instead.' : 'Type the folder path instead.'}`);
+    }
+  }
+  if (missing === cmds.length) {
+    throw new Error(`No ${what} chooser found. Install zenity (or kdialog), or ${kind === 'file' ? 'paste the file path' : 'type the folder path'} instead.`);
+  }
+  return null;
+}
 
 /** Returns the chosen absolute path, or null if the user cancelled. */
-export async function pickVideoFile(run: Runner = osascript(PICK_SCRIPT)): Promise<string | null> {
-  try {
-    const { stdout } = await run();
-    return stdout.trim() || null;
-  } catch (e) {
-    if (String((e as { stderr?: string }).stderr ?? '').includes('-128')) return null; // user canceled
-    throw new Error('Could not open the file chooser. Paste the file path instead.');
-  }
-}
-
-/** Returns the chosen absolute folder (no trailing slash), or null if the user cancelled. */
-export async function pickFolder(run: Runner = osascript(PICK_FOLDER_SCRIPT)): Promise<string | null> {
-  try {
-    const { stdout } = await run();
-    const p = stdout.trim().replace(/(.)\/+$/, '$1');
-    return p || null;
-  } catch (e) {
-    if (String((e as { stderr?: string }).stderr ?? '').includes('-128')) return null;
-    throw new Error('Could not open the folder chooser. Type the folder path instead.');
-  }
-}
+export const pickVideoFile = (run: Runner = execRunner, platform: Platform = process.platform) => pick('file', run, platform);
+/** Returns the chosen absolute folder (no trailing separator), or null if the user cancelled. */
+export const pickFolder = (run: Runner = execRunner, platform: Platform = process.platform) => pick('folder', run, platform);
