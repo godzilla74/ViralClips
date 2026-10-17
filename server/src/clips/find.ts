@@ -5,25 +5,29 @@ import { postprocess, type Candidate } from './postprocess.js';
 import { makeWindows } from './windows.js';
 
 const prompt = (text: string, s: Settings) => `You are an expert short-form video editor (TikTok, Reels, Shorts).
-Below is a timestamped transcript segment from a long video. Pick up to 5 moments that would make the best standalone short clips.
+Below is part of a transcript from a long video. Every line starts with an id and its length in seconds, like [L42|9s].
+Pick up to 5 moments that would make the best standalone short clips.
 
-Good clips: open with a strong hook, are self-contained (make sense without context), tell a story or deliver one clear insight, and carry emotion, surprise, humor, controversy or high practical value. Avoid intros, outros, small talk and mid-thought fragments.
+A good clip: opens with a strong hook, makes sense without context, tells a story or delivers one clear insight, and has emotion, surprise, humor, controversy or high practical value. Avoid intros, outros, small talk and fragments that start or end mid-thought.
 
 Rules:
-- Each clip must be between ${s.clipMinSec} and ${s.clipMaxSec} seconds long.
-- start and end are absolute seconds in the video, derived from the [mm:ss] markers.
-- score is 0-100 for viral potential. title is a punchy hook (max 80 chars). reason is one sentence.
+- A clip is a run of CONSECUTIVE lines. Give start_line and end_line (the numeric ids, inclusive, e.g. 42 and 47).
+- The line lengths in a clip must add up to between ${s.clipMinSec} and ${s.clipMaxSec} seconds (usually 3-7 lines).
+- title and reason must describe ONLY what is said in the chosen lines. Do not describe other parts of the transcript.
+- title is a punchy hook (max 80 chars). score is 0-100 for viral potential. reason is one sentence.
 
-Respond with ONLY JSON: {"clips":[{"start":0,"end":0,"title":"","score":0,"reason":""}]}
+Respond with ONLY JSON: {"clips":[{"start_line":0,"end_line":0,"title":"","score":0,"reason":""}]}
 
 TRANSCRIPT:
 ${text}`;
 
-function validate(x: unknown): Candidate[] {
+interface Raw { startLine: number; endLine: number; title: string; score: number; reason: string }
+
+function validate(x: unknown): Raw[] {
   const clips = (x as { clips?: unknown })?.clips;
   if (!Array.isArray(clips)) throw new Error('missing clips array');
   return clips.map((c: any) => ({
-    start: Number(c.start), end: Number(c.end), score: Number(c.score),
+    startLine: Number(c.start_line), endLine: Number(c.end_line), score: Number(c.score),
     title: String(c.title ?? 'Untitled clip').slice(0, 120), reason: String(c.reason ?? ''),
   }));
 }
@@ -38,7 +42,12 @@ export async function findClips(
   let lastError: unknown;
   for (const [i, w] of windows.entries()) {
     try {
-      all.push(...(await completeParsed(p, prompt(w.text, s), validate)));
+      const byId = new Map(w.lines.map((l) => [l.id, l]));
+      for (const r of await completeParsed(p, prompt(w.text, s), validate)) {
+        const a = byId.get(r.startLine), b = byId.get(r.endLine);
+        if (!a || !b || r.startLine > r.endLine) continue; // line ids must come from this window
+        all.push({ start: a.start, end: b.end, title: r.title, score: r.score, reason: r.reason });
+      }
     } catch (e) {
       failures++; // skip a failing window; keep partial results
       lastError = e;

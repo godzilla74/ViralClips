@@ -7,8 +7,8 @@ import { join } from 'node:path';
 
 const words = Array.from({ length: 200 }, (_, i) => ({ text: (i + 1) % 10 === 0 ? 'end.' : 'hello', start: i * 0.2, end: i * 0.2 + 0.18 }));
 const reply = JSON.stringify({ clips: [
-  { start: 0, end: 34, title: 'First', score: 95, reason: 'a' },
-  { start: 100, end: 134, title: 'Second', score: 70, reason: 'b' },
+  { start_line: 0, end_line: 3, title: 'First', score: 95, reason: 'a' },
+  { start_line: 90, end_line: 93, title: 'Second', score: 70, reason: 'b' },
 ] });
 
 describe('pipeline', () => {
@@ -23,7 +23,7 @@ describe('pipeline', () => {
     await app.inject({ method: 'POST', url: `/api/projects/${p.id}/analyze` });
     await app.jobs.whenIdle(p.id);
     const clips = (await app.inject({ url: `/api/projects/${p.id}/clips` })).json();
-    expect(clips.map((c: any) => c.title)).toEqual(['First']); // second is past the 40s video → dropped
+    expect(clips.map((c: any) => c.title)).toEqual(['First']); // unknown line ids are dropped
     await app.inject({ method: 'PATCH', url: `/api/clips/${clips[0].id}`, payload: { start: 2, end: 36 } });
     const ex = await app.inject({ method: 'POST', url: `/api/projects/${p.id}/export`, payload: { settings: { framing: 'blur', captions: true } } });
     expect(ex.statusCode).toBe(202);

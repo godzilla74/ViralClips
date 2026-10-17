@@ -35,7 +35,7 @@ async function setup(reply: string, tr: Transcriber = stubTranscribe) {
 }
 
 describe('analyze routes', () => {
-  const reply = JSON.stringify({ clips: [{ start: 0, end: 40, title: 'T', score: 90, reason: 'r' }] });
+  const reply = JSON.stringify({ clips: [{ start_line: 0, end_line: 3, title: 'T', score: 90, reason: 'r' }] });
   it('analyzes, lists clips, edits with validation', async () => {
     const { app, p } = await setup(reply);
     expect((await app.inject({ method: 'POST', url: `/api/projects/${p.id}/analyze` })).statusCode).toBe(202);
@@ -58,7 +58,7 @@ describe('analyze routes', () => {
 });
 
 describe('robustness', () => {
-  const good = JSON.stringify({ clips: [{ start: 0, end: 40, title: 'T', score: 90, reason: 'r' }] });
+  const good = JSON.stringify({ clips: [{ start_line: 0, end_line: 3, title: 'T', score: 90, reason: 'r' }] });
   it('keeps existing clips and reports an error when a re-run finds nothing', async () => {
     let current = good;
     const v = makeVideo({ seconds: 60, w: 320, h: 180 });
