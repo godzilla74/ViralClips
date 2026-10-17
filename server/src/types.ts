@@ -15,6 +15,8 @@ export interface Settings {
   captions: boolean;
   framing: 'crop' | 'blur' | 'original';
   captionStyle: 'bold' | 'clean' | 'karaoke';
+  /** Absolute folder for exported clips; '' = the app's own data/exports folder. */
+  exportDir: string;
 }
 export type Project = {
   id: string; name: string; videoPath: string; duration: number;

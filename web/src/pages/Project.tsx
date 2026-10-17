@@ -5,6 +5,7 @@ import { ClipList } from '../components/ClipList';
 import { Player } from '../components/Player';
 import { Trimmer } from '../components/Trimmer';
 import { Transcript } from '../components/Transcript';
+import { ExportFolder } from '../components/ExportFolder';
 import { ExportOptions } from './Settings';
 
 const fmtT = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
@@ -13,7 +14,8 @@ export function Project({ id }: { id: string }) {
   const [project, setProject] = useState<P | null>(null);
   const [clips, setClips] = useState<Clip[]>([]);
   const [transcript, setTranscript] = useState<T | null>(null);
-  const [exports, setExports] = useState<{ file: string; url: string; size: number }[]>([]);
+  const [exports, setExports] = useState<api.ExportFile[]>([]);
+  const [exportDir, setExportDir] = useState('');
   const [active, setActive] = useState<string>();
   const [job, setJob] = useState<JobEvent | null>(null);
   const [error, setError] = useState('');
@@ -32,7 +34,7 @@ export function Project({ id }: { id: string }) {
   };
   useEffect(() => {
     load().catch((e) => setError(e.message));
-    api.getSettings().then((s) => setOpts({ framing: s.framing, captions: s.captions, captionStyle: s.captionStyle }));
+    api.getSettings().then((s) => { setOpts({ framing: s.framing, captions: s.captions, captionStyle: s.captionStyle }); setExportDir(s.exportDir ?? ''); });
     return api.subscribeEvents(id, (e) => {
       if (e.connected) { setJob(e.running ? e : null); if (!e.running) load().catch(() => {}); return; }
       setJob(e.done ? null : e);
@@ -106,14 +108,23 @@ export function Project({ id }: { id: string }) {
             <section className="panel">
               <h3>Export {selected.length} clip{selected.length === 1 ? '' : 's'} · 1080×1920</h3>
               {opts && <ExportOptions s={opts} set={(k, v) => setOpts({ ...opts, [k]: v })} />}
+              <ExportFolder value={exportDir} onChange={(d) => { setExportDir(d); api.putSettings({ exportDir: d }).catch((e) => setError(e.message)); }} />
               <button disabled={running || !selected.length} onClick={() => {
                 setError('');
                 flushEdits().then(() => api.exportClips(id, opts ?? {})).then(() => setJob({ stage: 'export', pct: 0, message: 'Starting export…' })).catch((e) => setError(e.message));
               }}>Export selected clips</button>
               {exports.length > 0 && (
-                <ul className="exports">
-                  {exports.map((x) => <li key={x.file}><a href={x.url}>{x.file}</a> <span className="muted small">{(x.size / 1e6).toFixed(1)} MB</span></li>)}
-                </ul>
+                <>
+                  <div className="muted small" style={{ marginTop: 12 }}>Exported clips · {exports[0].folder}</div>
+                  <ul className="exports">
+                    {exports.map((x) => (
+                      <li key={x.file}>
+                        <a href={x.url}>{x.file}</a> <span className="muted small">{(x.size / 1e6).toFixed(1)} MB</span>{' '}
+                        <button className="ghost" onClick={() => api.revealExport(x.url).catch((e) => setError(e.message))}>Show in Finder</button>
+                      </li>
+                    ))}
+                  </ul>
+                </>
               )}
             </section>
           </div>

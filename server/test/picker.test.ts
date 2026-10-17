@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { pickVideoFile, PICK_SCRIPT } from '../src/picker.js';
+import { pickVideoFile, pickFolder, PICK_SCRIPT, PICK_FOLDER_SCRIPT } from '../src/picker.js';
 import { buildApp } from '../src/app.js';
 import { openDb } from '../src/db.js';
 import { makeVideo } from './helpers.js';
@@ -26,6 +26,17 @@ describe('pickVideoFile', () => {
   });
 });
 
+describe('pickFolder', () => {
+  it('returns the folder path without a trailing slash; null on cancel', async () => {
+    expect(await pickFolder(async () => ({ stdout: '/Users/me/Movies/My Shorts/\n' }))).toBe('/Users/me/Movies/My Shorts');
+    const cancel = async () => { throw Object.assign(new Error('x'), { stderr: 'User canceled. (-128)' }); };
+    expect(await pickFolder(cancel)).toBeNull();
+  });
+  it('uses an AppleScript that compiles', () => {
+    execFileSync('osacompile', ['-o', join(mkdtempSync(join(tmpdir(), 'vc-')), 'y.scpt'), '-e', PICK_FOLDER_SCRIPT]);
+  });
+});
+
 describe('POST /api/pick-file', () => {
   it('returns the picked path, or null on cancel', async () => {
     const v = makeVideo();
@@ -39,5 +50,9 @@ describe('POST /api/pick-file', () => {
     const app = buildApp({ db: openDb(':memory:'), dataDir: makeVideo().dir, pickFile: async () => '/x' });
     const r = await app.inject({ method: 'POST', url: '/api/pick-file', headers: { origin: 'https://evil.example' } });
     expect(r.statusCode).toBe(403);
+  });
+  it('POST /api/pick-folder returns the picked folder', async () => {
+    const app = buildApp({ db: openDb(':memory:'), dataDir: makeVideo().dir, pickFolder: async () => '/Users/me/Shorts' });
+    expect((await app.inject({ method: 'POST', url: '/api/pick-folder' })).json()).toEqual({ path: '/Users/me/Shorts' });
   });
 });

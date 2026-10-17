@@ -5,7 +5,7 @@ export interface Transcript { language: string; duration: number; words: Word[] 
 export interface Settings {
   provider: 'ollama' | 'openai'; ollamaModel: string; openaiModel: string; openaiKey?: string; hasKey?: boolean;
   clipMinSec: number; clipMaxSec: number; clipCount: number; captions: boolean;
-  framing: 'crop' | 'blur' | 'original'; captionStyle: 'bold' | 'clean' | 'karaoke';
+  framing: 'crop' | 'blur' | 'original'; captionStyle: 'bold' | 'clean' | 'karaoke'; exportDir: string;
 }
 export interface Dep { name: string; ok: boolean; hint: string }
 export interface JobEvent { stage: 'transcribe' | 'analyze' | 'export'; pct: number; message?: string; done?: boolean; error?: string; connected?: boolean; running?: boolean }
@@ -42,7 +42,10 @@ export const getTranscript = (id: string) => fetch(`/api/projects/${id}/transcri
 export const patchClip = (id: string, p: Partial<Pick<Clip, 'start' | 'end' | 'title' | 'selected'>>) =>
   fetch(`/api/clips/${id}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify(p) }).then(j<Clip>);
 export const exportClips = (id: string, settings: Partial<Settings>) => post(`/api/projects/${id}/export`, { settings }).then(j);
-export const listExports = (id: string) => fetch(`/api/projects/${id}/exports`).then(j<{ file: string; size: number; url: string }[]>);
+export interface ExportFile { file: string; folder: string; size: number; url: string }
+export const listExports = (id: string) => fetch(`/api/projects/${id}/exports`).then(j<ExportFile[]>);
+export const revealExport = (url: string) => post(`${url}/reveal`).then(j);
+export const pickFolder = () => post('/api/pick-folder').then(j<{ path: string | null }>);
 
 export function subscribeEvents(id: string, cb: (e: JobEvent) => void) {
   const es = new EventSource(`/api/projects/${id}/events`);

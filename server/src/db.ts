@@ -21,6 +21,10 @@ export function openDb(path: string): Db {
       start REAL NOT NULL, end REAL NOT NULL, title TEXT NOT NULL,
       score REAL NOT NULL, reason TEXT NOT NULL, selected INTEGER NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS exports (
+      id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      path TEXT NOT NULL UNIQUE, created_at INTEGER NOT NULL
+    );
   `);
   db.pragma('foreign_keys = ON');
   return db;
@@ -88,3 +92,10 @@ export function resetInterrupted(db: Db) {
   db.prepare("UPDATE projects SET status='error', error=? WHERE status IN ('transcribing','analyzing')")
     .run('Interrupted by a restart — click “Find best clips” to run again');
 }
+
+export function addExport(db: Db, projectId: string, path: string) {
+  db.prepare('INSERT INTO exports VALUES (?,?,?,?) ON CONFLICT(path) DO UPDATE SET created_at=excluded.created_at')
+    .run(randomUUID(), projectId, path, Date.now());
+}
+export const listExportPaths = (db: Db, projectId: string): string[] =>
+  (db.prepare('SELECT path FROM exports WHERE project_id=? ORDER BY created_at DESC').all(projectId) as { path: string }[]).map((r) => r.path);

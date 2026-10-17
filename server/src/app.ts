@@ -3,13 +3,13 @@ import multipart from '@fastify/multipart';
 import fastifyStatic from '@fastify/static';
 import { fileURLToPath } from 'node:url';
 import { createReadStream, createWriteStream, existsSync, mkdirSync, readdirSync, rmSync, statSync } from 'node:fs';
-import { basename, extname, join } from 'node:path';
+import { basename, dirname, extname, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { pipeline } from 'node:stream/promises';
 import { DATA_DIR, loadSettings, publicSettings, sanitize, saveSettings } from './config.js';
 import { checkDeps } from './deps.js';
 import {
-  createProject, deleteProject, getClip, getProject, getTranscript, listClips, listProjects, openDb,
+  addExport, createProject, deleteProject, listExportPaths, getClip, getProject, getTranscript, listClips, listProjects, openDb,
   replaceClips, resetInterrupted, saveTranscript, setProjectStatus, updateClip, type Db,
 } from './db.js';
 import { findClips } from './clips/find.js';
@@ -19,7 +19,8 @@ import type { LlmProvider } from './llm/types.js';
 import { transcribe as defaultTranscribe, type Transcriber } from './transcribe.js';
 import { extractAudio, probe } from './media.js';
 import { exportClip } from './export.js';
-import { pickVideoFile } from './picker.js';
+import { pickFolder as defaultPickFolder, pickVideoFile } from './picker.js';
+import { execFile } from 'node:child_process';
 import type { Settings } from './types.js';
 
 export interface AppOptions {
@@ -27,6 +28,8 @@ export interface AppOptions {
   transcribe?: Transcriber;
   provider?: (s: Settings) => LlmProvider;
   pickFile?: () => Promise<string | null>;
+  pickFolder?: () => Promise<string | null>;
+  reveal?: (path: string) => Promise<void>;
 }
 
 export function buildApp(opts: AppOptions = {}) {
@@ -65,6 +68,15 @@ export function buildApp(opts: AppOptions = {}) {
     if (!opts.pickFile && process.platform !== 'darwin') return reply.code(501).send({ error: 'The file chooser is only available on macOS. Paste the file path instead.' });
     try {
       return { path: await (opts.pickFile ?? pickVideoFile)() };
+    } catch (e) {
+      return reply.code(500).send({ error: (e as Error).message });
+    }
+  });
+
+  app.post('/api/pick-folder', async (_req, reply) => {
+    if (!opts.pickFolder && process.platform !== 'darwin') return reply.code(501).send({ error: 'The folder chooser is only available on macOS. Type the folder path instead.' });
+    try {
+      return { path: await (opts.pickFolder ?? defaultPickFolder)() };
     } catch (e) {
       return reply.code(500).send({ error: (e as Error).message });
     }
@@ -109,7 +121,7 @@ export function buildApp(opts: AppOptions = {}) {
     const proj = getProject(db, id);
     deleteProject(db, id);
     rmSync(join(dataDir, 'audio', `${id}.wav`), { force: true });
-    rmSync(join(dataDir, 'exports', id), { recursive: true, force: true });
+    rmSync(defaultExportsDir(id), { recursive: true, force: true }); // never touches a user-chosen export folder
     // only delete the internal upload copy — never a file the user pointed us at
     if (proj?.videoPath.startsWith(join(dataDir, 'uploads'))) rmSync(proj.videoPath, { force: true });
     return { ok: true };
@@ -207,7 +219,11 @@ export function buildApp(opts: AppOptions = {}) {
   });
 
   // ---- export ----
-  const exportsDir = (id: string) => join(dataDir, 'exports', id);
+  const defaultExportsDir = (id: string) => join(dataDir, 'exports', id);
+  const reveal = opts.reveal ?? ((path: string) => new Promise<void>((res, rej) => execFile('open', ['-R', path], (e) => (e ? rej(e) : res()))));
+  /** Exports this app made for the project (that still exist). Only these may be downloaded or revealed. */
+  const exportedFiles = (id: string) => listExportPaths(db, id).filter((p) => existsSync(p));
+  const findExport = (id: string, file: string) => exportedFiles(id).find((p) => basename(p) === file);
 
   app.post('/api/projects/:id/export', async (req, reply) => {
     const id = (req.params as any).id as string;
@@ -219,45 +235,57 @@ export function buildApp(opts: AppOptions = {}) {
     if (!clips.length) return reply.code(400).send({ error: 'No clips selected' });
     if (jobs.isRunning(id)) return reply.code(409).send({ error: 'Job already running' });
     const settings = { ...loadSettings(dataDir), ...sanitize((body.settings ?? {}) as Record<string, unknown>) };
+    const outDir = settings.exportDir || defaultExportsDir(id);
     const words = getTranscript(db, id)?.words ?? [];
     void jobs.runExclusive(id, async () => {
       try {
-        const files: string[] = [];
         for (const [i, clip] of clips.entries()) {
           const file = await exportClip({
-            videoPath: proj.videoPath, clip, words, settings, outDir: exportsDir(id),
+            videoPath: proj.videoPath, clip, words, settings, outDir,
             onProgress: (p) => jobs.emit(id, {
               stage: 'export', pct: Math.round(((i + p / 100) / clips.length) * 100),
               message: `Exporting clip ${i + 1} of ${clips.length}`,
             }),
           });
-          files.push(file);
+          addExport(db, id, file);
         }
         jobs.emit(id, { stage: 'export', pct: 100, done: true });
       } catch (e) {
-        jobs.emit(id, { stage: 'export', pct: 0, error: (e as Error).message, done: true });
+        jobs.emit(id, { stage: 'export', pct: 0, error: `Export failed: ${(e as Error).message}`, done: true });
       }
     });
-    return reply.code(202).send({ started: true, count: clips.length });
+    return reply.code(202).send({ started: true, count: clips.length, folder: outDir });
   });
 
   app.get('/api/projects/:id/exports', async (req) => {
     const id = (req.params as any).id as string;
-    const dir = exportsDir(id);
-    if (!existsSync(dir)) return [];
-    return readdirSync(dir).filter((f) => f.endsWith('.mp4')).sort()
-      .map((f) => ({ file: f, size: statSync(join(dir, f)).size, url: `/api/exports/${id}/${encodeURIComponent(f)}` }));
+    return exportedFiles(id).map((p) => ({
+      file: basename(p), folder: dirname(p), size: statSync(p).size,
+      url: `/api/exports/${id}/${encodeURIComponent(basename(p))}`,
+    }));
   });
 
   app.get('/api/exports/:id/:file', async (req, reply) => {
     const { id, file } = req.params as { id: string; file: string };
-    const path = join(exportsDir(basename(id)), basename(file));
-    if (!existsSync(path)) return reply.code(404).send({ error: 'Not found' });
+    const path = findExport(id, file);
+    if (!path) return reply.code(404).send({ error: 'Not found' });
     reply.headers({
       'content-type': 'video/mp4', 'content-length': statSync(path).size,
-      'content-disposition': `attachment; filename="${basename(file).replace(/"/g, '')}"`,
+      'content-disposition': `attachment; filename="${basename(path).replace(/"/g, '')}"`,
     });
     return reply.send(createReadStream(path));
+  });
+
+  app.post('/api/exports/:id/:file/reveal', async (req, reply) => {
+    const { id, file } = req.params as { id: string; file: string };
+    const path = findExport(id, file);
+    if (!path) return reply.code(404).send({ error: 'Not found' });
+    try {
+      await reveal(path);
+      return { ok: true };
+    } catch (e) {
+      return reply.code(500).send({ error: `Could not open Finder: ${(e as Error).message}` });
+    }
   });
 
   app.get('/api/llm/models', async (_req, reply) => {

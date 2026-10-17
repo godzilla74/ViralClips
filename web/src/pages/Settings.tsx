@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { ExportFolder } from '../components/ExportFolder';
 import { getSettings, listModels, putSettings, type ModelInfo, type Settings as S } from '../api';
 
 export function Settings() {
@@ -71,6 +72,7 @@ export function Settings() {
           <label>How many<input type="number" min={1} max={30} value={s.clipCount} onChange={(e) => set('clipCount', Number(e.target.value))} /></label>
         </div>
         <ExportOptions s={s} set={set} />
+        <ExportFolder value={s.exportDir ?? ''} onChange={(d) => set('exportDir', d)} />
       </section>
       <button onClick={save}>Save settings</button> {saved && <span className="muted">Saved ✓</span>}
     </>

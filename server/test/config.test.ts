@@ -32,4 +32,11 @@ describe('settings', () => {
     expect('evil' in s).toBe(false);
     expect(saveSettings({ clipCount: 0 } as any, d).clipCount).toBeGreaterThanOrEqual(1);
   });
+  it('accepts an absolute export folder (or empty = default) and rejects relative paths', () => {
+    const d = tmp();
+    expect(saveSettings({ exportDir: '/Users/me/Movies/Shorts' }, d).exportDir).toBe('/Users/me/Movies/Shorts');
+    expect(saveSettings({ exportDir: 'relative/path' }, d).exportDir).toBe('/Users/me/Movies/Shorts'); // rejected, previous kept
+    expect(saveSettings({ exportDir: '' }, d).exportDir).toBe('');
+    expect(loadSettings(tmp()).exportDir).toBe('');
+  });
 });

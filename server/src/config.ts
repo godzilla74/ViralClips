@@ -16,6 +16,7 @@ export const DEFAULTS: Settings = {
   captions: true,
   framing: 'crop',
   captionStyle: 'karaoke',
+  exportDir: '',
 };
 
 export function loadSettings(dir = DATA_DIR): Settings {
@@ -44,6 +45,10 @@ export function sanitize(p: Record<string, unknown> = {}): Partial<Settings> {
   }
   for (const k of STRS) if (typeof p[k] === 'string') out[k] = (p[k] as string).trim().slice(0, 300);
   if (typeof p.captions === 'boolean') out.captions = p.captions;
+  if (typeof p.exportDir === 'string') {
+    const d = p.exportDir.trim().replace(/(.)\/+$/, '$1');
+    if (d === '' || (d.startsWith('/') && d.length <= 1000 && !d.includes('\0'))) out.exportDir = d; // relative paths are rejected
+  }
   return out as Partial<Settings>;
 }
 
