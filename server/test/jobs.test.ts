@@ -28,7 +28,7 @@ const stubTranscribe: Transcriber = async () => ({ language: 'en', duration: 60,
 const stubProvider = (reply: string): LlmProvider => ({ listModels: async () => ['m'], completeJSON: async () => reply });
 
 async function setup(reply: string, tr: Transcriber = stubTranscribe) {
-  const v = makeVideo({ seconds: 3 });
+  const v = makeVideo({ seconds: 60, w: 320, h: 180 });
   const app = buildApp({ db: openDb(':memory:'), dataDir: v.dir, transcribe: tr, provider: () => stubProvider(reply) });
   const p = (await app.inject({ method: 'POST', url: '/api/projects', payload: { path: v.path } })).json();
   return { app, p };
