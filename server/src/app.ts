@@ -1,6 +1,6 @@
 import Fastify from 'fastify';
 import multipart from '@fastify/multipart';
-import { createReadStream, createWriteStream, existsSync, mkdirSync, statSync } from 'node:fs';
+import { createReadStream, createWriteStream, existsSync, mkdirSync, readdirSync, statSync } from 'node:fs';
 import { basename, extname, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { pipeline } from 'node:stream/promises';
@@ -16,6 +16,7 @@ import { makeProvider } from './llm/index.js';
 import type { LlmProvider } from './llm/types.js';
 import { transcribe as defaultTranscribe, type Transcriber } from './transcribe.js';
 import { extractAudio, probe } from './media.js';
+import { exportClip } from './export.js';
 import type { Settings } from './types.js';
 
 export interface AppOptions {
@@ -165,6 +166,60 @@ export function buildApp(opts: AppOptions = {}) {
       ...(typeof b.selected === 'boolean' ? { selected: b.selected } : {}),
     });
     return getClip(db, clip.id);
+  });
+
+  // ---- export ----
+  const exportsDir = (id: string) => join(dataDir, 'exports', id);
+
+  app.post('/api/projects/:id/export', async (req, reply) => {
+    const id = (req.params as any).id as string;
+    const proj = getProject(db, id);
+    if (!proj) return reply.code(404).send({ error: 'Not found' });
+    const body = (req.body ?? {}) as { clipIds?: string[]; settings?: Partial<Settings> };
+    const all = listClips(db, id);
+    const clips = body.clipIds ? all.filter((c) => body.clipIds!.includes(c.id)) : all.filter((c) => c.selected);
+    if (!clips.length) return reply.code(400).send({ error: 'No clips selected' });
+    if (jobs.isRunning(id)) return reply.code(409).send({ error: 'Job already running' });
+    const settings = { ...loadSettings(dataDir), ...(body.settings ?? {}) };
+    const words = getTranscript(db, id)?.words ?? [];
+    void jobs.runExclusive(id, async () => {
+      try {
+        const files: string[] = [];
+        for (const [i, clip] of clips.entries()) {
+          const file = await exportClip({
+            videoPath: proj.videoPath, clip, words, settings, outDir: exportsDir(id),
+            onProgress: (p) => jobs.emit(id, {
+              stage: 'export', pct: Math.round(((i + p / 100) / clips.length) * 100),
+              message: `Exporting clip ${i + 1} of ${clips.length}`,
+            }),
+          });
+          files.push(file);
+        }
+        jobs.emit(id, { stage: 'export', pct: 100, done: true });
+      } catch (e) {
+        jobs.emit(id, { stage: 'export', pct: 0, error: (e as Error).message, done: true });
+      }
+    });
+    return reply.code(202).send({ started: true, count: clips.length });
+  });
+
+  app.get('/api/projects/:id/exports', async (req) => {
+    const id = (req.params as any).id as string;
+    const dir = exportsDir(id);
+    if (!existsSync(dir)) return [];
+    return readdirSync(dir).filter((f) => f.endsWith('.mp4')).sort()
+      .map((f) => ({ file: f, size: statSync(join(dir, f)).size, url: `/api/exports/${id}/${encodeURIComponent(f)}` }));
+  });
+
+  app.get('/api/exports/:id/:file', async (req, reply) => {
+    const { id, file } = req.params as { id: string; file: string };
+    const path = join(exportsDir(basename(id)), basename(file));
+    if (!existsSync(path)) return reply.code(404).send({ error: 'Not found' });
+    reply.headers({
+      'content-type': 'video/mp4', 'content-length': statSync(path).size,
+      'content-disposition': `attachment; filename="${basename(file).replace(/"/g, '')}"`,
+    });
+    return reply.send(createReadStream(path));
   });
 
   app.get('/api/llm/models', async (_req, reply) => {
