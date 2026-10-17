@@ -2,15 +2,15 @@ import Fastify from 'fastify';
 import multipart from '@fastify/multipart';
 import fastifyStatic from '@fastify/static';
 import { fileURLToPath } from 'node:url';
-import { createReadStream, createWriteStream, existsSync, mkdirSync, readdirSync, statSync } from 'node:fs';
+import { createReadStream, createWriteStream, existsSync, mkdirSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { basename, extname, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { pipeline } from 'node:stream/promises';
-import { DATA_DIR, loadSettings, publicSettings, saveSettings } from './config.js';
+import { DATA_DIR, loadSettings, publicSettings, sanitize, saveSettings } from './config.js';
 import { checkDeps } from './deps.js';
 import {
   createProject, deleteProject, getClip, getProject, getTranscript, listClips, listProjects, openDb,
-  replaceClips, saveTranscript, setProjectStatus, updateClip, type Db,
+  replaceClips, resetInterrupted, saveTranscript, setProjectStatus, updateClip, type Db,
 } from './db.js';
 import { findClips } from './clips/find.js';
 import { JobBus } from './jobs.js';
@@ -33,15 +33,27 @@ export function buildApp(opts: AppOptions = {}) {
   const transcribe = opts.transcribe ?? defaultTranscribe;
   const provider = opts.provider ?? makeProvider;
   const jobs = new JobBus();
+  resetInterrupted(db);
   const app = Fastify({ logger: false, bodyLimit: 1024 * 1024 });
   app.decorate('jobs', jobs);
+  // Local-only app: refuse DNS-rebinding (non-local Host) and cross-site (non-local Origin) requests.
+  const isLocal = (h: string) => /^(localhost|127\.0\.0\.1|\[::1\])$/.test(h);
+  app.addHook('onRequest', async (req, reply) => {
+    if (!req.url.startsWith('/api')) return;
+    const host = (req.headers.host ?? '').replace(/:\d+$/, '');
+    let originOk = true;
+    if (req.headers.origin) {
+      try { originOk = isLocal(new URL(req.headers.origin).hostname); } catch { originOk = false; }
+    }
+    if ((host && !isLocal(host)) || !originOk) return reply.code(403).send({ error: 'Forbidden' });
+  });
   app.register(multipart, { limits: { fileSize: 50 * 1024 ** 3 } });
 
   app.get('/api/health', async () => ({ ok: true }));
   app.get('/api/setup', async () => checkDeps());
   app.get('/api/settings', async () => publicSettings(loadSettings(dataDir)));
   app.put('/api/settings', async (req) => {
-    const body = (req.body ?? {}) as Partial<Settings>;
+    const body = sanitize((req.body ?? {}) as Record<string, unknown>);
     if (!body.openaiKey) delete body.openaiKey; // empty = keep existing
     return publicSettings(saveSettings(body, dataDir));
   });
@@ -61,12 +73,17 @@ export function buildApp(opts: AppOptions = {}) {
       if (!videoPath || !existsSync(videoPath) || !statSync(videoPath).isFile())
         return reply.code(400).send({ error: `File not found: ${videoPath}` });
     }
+    const isUpload = videoPath.startsWith(join(dataDir, 'uploads'));
     try {
       const info = await probe(videoPath);
-      if (!info.hasAudio) return reply.code(400).send({ error: 'No audio track found in this video' });
+      if (!info.hasAudio) {
+        if (isUpload) rmSync(videoPath, { force: true });
+        return reply.code(400).send({ error: 'No audio track found in this video' });
+      }
       const name = basename((req as any).origName ?? videoPath).replace(/\.[^.]+$/, '');
       return createProject(db, { name, videoPath, duration: info.duration });
     } catch (e) {
+      if (isUpload) rmSync(videoPath, { force: true });
       return reply.code(400).send({ error: (e as Error).message });
     }
   });
@@ -76,7 +93,13 @@ export function buildApp(opts: AppOptions = {}) {
     return p ?? reply.code(404).send({ error: 'Not found' });
   });
   app.delete('/api/projects/:id', async (req) => {
-    deleteProject(db, (req.params as any).id);
+    const id = basename((req.params as any).id as string);
+    const proj = getProject(db, id);
+    deleteProject(db, id);
+    rmSync(join(dataDir, 'audio', `${id}.wav`), { force: true });
+    rmSync(join(dataDir, 'exports', id), { recursive: true, force: true });
+    // only delete the internal upload copy — never a file the user pointed us at
+    if (proj?.videoPath.startsWith(join(dataDir, 'uploads'))) rmSync(proj.videoPath, { force: true });
     return { ok: true };
   });
   app.get('/api/projects/:id/video', async (req, reply) => {
@@ -119,6 +142,7 @@ export function buildApp(opts: AppOptions = {}) {
       setProjectStatus(db, id, 'analyzing');
       const found = await findClips(t, provider(settings), settings, (pct) =>
         jobs.emit(id, { stage: 'analyze', pct, message: 'Finding the best clips' }));
+      if (!found.length) throw new Error('No suitable clips found. Try a different model or a shorter minimum clip length.');
       replaceClips(db, id, found.map((c, i) => ({ ...c, selected: i < 5 })));
       setProjectStatus(db, id, 'ready');
       jobs.emit(id, { stage: 'analyze', pct: 100, done: true });
@@ -182,7 +206,7 @@ export function buildApp(opts: AppOptions = {}) {
     const clips = body.clipIds ? all.filter((c) => body.clipIds!.includes(c.id)) : all.filter((c) => c.selected);
     if (!clips.length) return reply.code(400).send({ error: 'No clips selected' });
     if (jobs.isRunning(id)) return reply.code(409).send({ error: 'Job already running' });
-    const settings = { ...loadSettings(dataDir), ...(body.settings ?? {}) };
+    const settings = { ...loadSettings(dataDir), ...sanitize((body.settings ?? {}) as Record<string, unknown>) };
     const words = getTranscript(db, id)?.words ?? [];
     void jobs.runExclusive(id, async () => {
       try {

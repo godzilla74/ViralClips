@@ -41,8 +41,11 @@ describe('postprocess', () => {
     const [d] = postprocess([cand(250, 400)], t, opts);
     expect(d.end).toBeLessThanOrEqual(300);
   });
-  it('drops clips shorter than min', () => {
-    expect(postprocess([cand(10, 30)], t, opts)).toEqual([]);
+  it('extends clips shorter than min to a sentence end instead of dropping them', () => {
+    const [c] = postprocess([cand(10, 30)], t, opts);
+    expect(c.end - c.start).toBeGreaterThanOrEqual(30);
+    expect(c.end - c.start).toBeLessThanOrEqual(60);
+    expect(c.end % 10).toBe(0);
   });
   it('trims long clips to ≤ max at a sentence end', () => {
     const [c] = postprocess([cand(0, 90)], t, opts);
@@ -76,11 +79,23 @@ describe('findClips', () => {
     const r = await findClips(transcript(200), p, DEFAULTS, () => {});
     expect(r[0]).toMatchObject({ title: 'A', score: 88 });
   });
-  it('survives a failing provider with partial (empty) results', async () => {
-    expect(await findClips(transcript(200), fake(new Error('down')), DEFAULTS, () => {})).toEqual([]);
+  it('throws the provider error when every window fails (no silent empty result)', async () => {
+    await expect(findClips(transcript(200), fake(new Error('down')), DEFAULTS, () => {})).rejects.toThrow('down');
   });
   it('throws on an empty transcript', async () => {
     await expect(findClips({ language: 'en', duration: 0, words: [] }, fake('{}'), DEFAULTS, () => {}))
       .rejects.toThrow('No speech detected');
+  });
+});
+
+describe('transcripts without punctuation', () => {
+  const noPunct: Transcript = { language: 'en', duration: 600, words: Array.from({ length: 600 }, (_, i) => ({ text: 'w', start: i, end: i + 0.9 })) };
+  it('windows still carry frequent timestamps', () => {
+    const w = makeWindows(noPunct)[0];
+    expect(w.text.split('\n').length).toBeGreaterThan(10);
+  });
+  it('postprocess keeps distinct clips (falls back to word boundaries)', () => {
+    const r = postprocess([cand(200, 240, 80), cand(400, 445, 70)], noPunct, opts);
+    expect(r.map((c) => Math.round(c.start))).toEqual([200, 400]);
   });
 });

@@ -22,19 +22,17 @@ export function Project({ id }: { id: string }) {
   const load = async () => {
     const p = await api.getProject(id);
     setProject(p);
-    if (p.status === 'ready' || clips.length) {
-      const cs = await api.getClips(id);
-      setClips(cs);
-      setActive((a) => a ?? cs[0]?.id);
-      api.getTranscript(id).then(setTranscript).catch(() => {});
-    }
+    const cs = await api.getClips(id);
+    setClips(cs);
+    setActive((a) => (a && cs.some((c) => c.id === a) ? a : cs[0]?.id));
+    if (cs.length) api.getTranscript(id).then(setTranscript).catch(() => {});
     api.listExports(id).then(setExports).catch(() => {});
   };
   useEffect(() => {
     load().catch((e) => setError(e.message));
     api.getSettings().then((s) => setOpts({ framing: s.framing, captions: s.captions, captionStyle: s.captionStyle }));
     return api.subscribeEvents(id, (e) => {
-      if (e.connected) { if (e.running) setJob(e); return; }
+      if (e.connected) { setJob(e.running ? e : null); if (!e.running) load().catch(() => {}); return; }
       setJob(e.done ? null : e);
       if (e.done) { if (e.error) setError(e.error); load().catch(() => {}); }
     });
@@ -46,6 +44,12 @@ export function Project({ id }: { id: string }) {
   const duration = project?.duration ?? 0;
 
   const pending = useRef<Record<string, Partial<Clip>>>({});
+  async function flushEdits() {
+    const todo = Object.entries(pending.current);
+    pending.current = {};
+    todo.forEach(([cid]) => clearTimeout(timers.current[cid]));
+    await Promise.all(todo.map(([cid, body]) => api.patchClip(cid, body)));
+  }
   function edit(cid: string, patch: Partial<Clip>) {
     setClips((cs) => cs.map((c) => (c.id === cid ? { ...c, ...patch } : c)));
     pending.current[cid] = { ...pending.current[cid], ...patch };
@@ -91,7 +95,7 @@ export function Project({ id }: { id: string }) {
               {opts && <ExportOptions s={opts} set={(k, v) => setOpts({ ...opts, [k]: v })} />}
               <button disabled={running || !selected.length} onClick={() => {
                 setError('');
-                api.exportClips(id, opts ?? {}).then(() => setJob({ stage: 'export', pct: 0, message: 'Starting export…' })).catch((e) => setError(e.message));
+                flushEdits().then(() => api.exportClips(id, opts ?? {})).then(() => setJob({ stage: 'export', pct: 0, message: 'Starting export…' })).catch((e) => setError(e.message));
               }}>Export selected clips</button>
               {exports.length > 0 && (
                 <ul className="exports">

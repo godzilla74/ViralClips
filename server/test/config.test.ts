@@ -23,4 +23,13 @@ describe('settings', () => {
     expect(p.hasKey).toBe(true);
     expect('openaiKey' in p).toBe(false);
   });
+  it('sanitizes invalid values and unknown fields', () => {
+    const d = tmp();
+    const s = saveSettings({ framing: 'zzz', clipCount: 'abc', clipMinSec: 60, clipMaxSec: 45, evil: 1 } as any, d);
+    expect(s.framing).toBe('crop');
+    expect(s.clipCount).toBe(10);
+    expect(s.clipMaxSec).toBeGreaterThanOrEqual(s.clipMinSec);
+    expect('evil' in s).toBe(false);
+    expect(saveSettings({ clipCount: 0 } as any, d).clipCount).toBeGreaterThanOrEqual(1);
+  });
 });

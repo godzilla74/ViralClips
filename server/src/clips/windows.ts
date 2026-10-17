@@ -11,14 +11,18 @@ function render(words: Word[]): string {
   const lines: string[] = [];
   let line: string[] = [];
   let lineStart = 0;
-  for (const w of words) {
+  words.forEach((w, i) => {
     if (!line.length) lineStart = w.start;
     line.push(w.text);
-    if (/[.?!]$/.test(w.text) && w.end - lineStart >= 8) {
+    const next = words[i + 1];
+    const sentence = /[.?!]$/.test(w.text) && w.end - lineStart >= 8;
+    const pause = !!next && next.start - w.end >= 0.7 && w.end - lineStart >= 4;
+    const long = w.end - lineStart >= 10; // keeps timestamps frequent when punctuation is missing
+    if (sentence || pause || long) {
       lines.push(`${stamp(lineStart)} ${line.join(' ')}`);
       line = [];
     }
-  }
+  });
   if (line.length) lines.push(`${stamp(lineStart)} ${line.join(' ')}`);
   return lines.join('\n');
 }

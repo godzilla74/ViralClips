@@ -34,13 +34,17 @@ export async function findClips(
   if (!t.words.length) throw new Error('No speech detected');
   const windows = makeWindows(t);
   const all: Candidate[] = [];
+  let failures = 0;
+  let lastError: unknown;
   for (const [i, w] of windows.entries()) {
     try {
       all.push(...(await completeParsed(p, prompt(w.text, s), validate)));
-    } catch {
-      // skip a failing window; keep partial results
+    } catch (e) {
+      failures++; // skip a failing window; keep partial results
+      lastError = e;
     }
     onProgress(Math.round(((i + 1) / windows.length) * 100));
   }
+  if (failures === windows.length) throw lastError instanceof Error ? lastError : new Error('The AI model failed on every segment');
   return postprocess(all, t, { minSec: s.clipMinSec, maxSec: s.clipMaxSec, count: s.clipCount });
 }

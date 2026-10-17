@@ -82,3 +82,9 @@ export function updateClip(db: Db, id: string, patch: Partial<Pick<Clip, 'start'
   db.prepare('UPDATE clips SET start=?,end=?,title=?,selected=? WHERE id=?')
     .run(n.start, n.end, n.title, n.selected ? 1 : 0, id);
 }
+
+/** Projects left mid-job by a crash/restart can never finish; surface them as errors. */
+export function resetInterrupted(db: Db) {
+  db.prepare("UPDATE projects SET status='error', error=? WHERE status IN ('transcribing','analyzing')")
+    .run('Interrupted by a restart — click “Find best clips” to run again');
+}

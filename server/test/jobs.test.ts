@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { JobBus } from '../src/jobs.js';
 import { buildApp } from '../src/app.js';
-import { openDb } from '../src/db.js';
+import { openDb, createProject, setProjectStatus, getProject } from '../src/db.js';
 import { makeVideo } from './helpers.js';
 import type { LlmProvider } from '../src/llm/types.js';
 import type { Transcriber } from '../src/transcribe.js';
@@ -54,5 +54,29 @@ describe('analyze routes', () => {
     await app.inject({ method: 'POST', url: `/api/projects/${p.id}/analyze` });
     await app.jobs.whenIdle(p.id);
     expect((await app.inject({ url: `/api/projects/${p.id}` })).json()).toMatchObject({ status: 'error', error: 'No speech detected' });
+  });
+});
+
+describe('robustness', () => {
+  const good = JSON.stringify({ clips: [{ start: 0, end: 40, title: 'T', score: 90, reason: 'r' }] });
+  it('keeps existing clips and reports an error when a re-run finds nothing', async () => {
+    let current = good;
+    const v = makeVideo({ seconds: 60, w: 320, h: 180 });
+    const app = buildApp({ db: openDb(':memory:'), dataDir: v.dir, transcribe: stubTranscribe, provider: () => stubProvider(current) });
+    const p = (await app.inject({ method: 'POST', url: '/api/projects', payload: { path: v.path } })).json();
+    await app.inject({ method: 'POST', url: `/api/projects/${p.id}/analyze` });
+    await app.jobs.whenIdle(p.id);
+    current = '{"clips":[]}';
+    await app.inject({ method: 'POST', url: `/api/projects/${p.id}/analyze` });
+    await app.jobs.whenIdle(p.id);
+    expect((await app.inject({ url: `/api/projects/${p.id}/clips` })).json()).toHaveLength(1);
+    expect((await app.inject({ url: `/api/projects/${p.id}` })).json()).toMatchObject({ status: 'error' });
+  });
+  it('resets projects interrupted by a restart', () => {
+    const db = openDb(':memory:');
+    const pr = createProject(db, { name: 'a', videoPath: '/x', duration: 1 });
+    setProjectStatus(db, pr.id, 'transcribing');
+    buildApp({ db, dataDir: makeVideo().dir });
+    expect(getProject(db, pr.id)).toMatchObject({ status: 'error' });
   });
 });

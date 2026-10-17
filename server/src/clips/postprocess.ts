@@ -18,6 +18,10 @@ function boundaries(t: Transcript) {
   });
   const total = t.words.at(-1)?.end ?? t.duration;
   if (ends.at(-1) !== total) ends.push(total);
+  if (ends.length < Math.ceil(total / 30)) {
+    // transcript has (almost) no punctuation or pauses: fall back to word boundaries
+    return { starts: [0, ...t.words.map((w) => w.start)], ends: [...t.words.map((w) => w.end)] };
+  }
   return { starts, ends };
 }
 
@@ -41,6 +45,9 @@ export function postprocess(cands: Candidate[], t: Transcript, o: PostOpts): Can
     if (end - start > o.maxSec) {
       const fit = ends.filter((e) => e > start && e - start <= o.maxSec).at(-1);
       end = fit ?? start + o.maxSec;
+    }
+    if (end - start < o.minSec) {
+      end = ends.find((e) => e - start >= o.minSec && e - start <= o.maxSec) ?? end; // extend instead of dropping
     }
     if (end - start >= o.minSec) snapped.push({ ...c, start, end });
   }

@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Clip } from '../api';
 import { clampTrim } from '../trim';
 
@@ -22,9 +22,9 @@ export function Trimmer({ clip, duration, onTrim }: { clip: Clip; duration: numb
     const up = () => { removeEventListener('pointermove', move); removeEventListener('pointerup', up); };
     addEventListener('pointermove', move); addEventListener('pointerup', up);
   };
-  const num = (which: 'start' | 'end') => (e: React.ChangeEvent<HTMLInputElement>) => {
-    const v = Number(e.target.value);
-    if (!Number.isFinite(v)) return;
+  const commit = (which: 'start' | 'end', text: string) => {
+    const v = Number(text);
+    if (text.trim() === '' || !Number.isFinite(v)) return;
     const r = which === 'start' ? clampTrim(v, clip.end, duration) : clampTrim(clip.start, v, duration);
     onTrim(r.start, r.end);
   };
@@ -36,10 +36,26 @@ export function Trimmer({ clip, duration, onTrim }: { clip: Clip; duration: numb
         <div className="handle" style={{ left: `${pct(clip.end)}%` }} onPointerDown={drag('end')} />
       </div>
       <div className="row3">
-        <label>Start (s)<input type="number" step="0.1" value={+clip.start.toFixed(2)} onChange={num('start')} /></label>
-        <label>End (s)<input type="number" step="0.1" value={+clip.end.toFixed(2)} onChange={num('end')} /></label>
+        <TimeField label="Start (s)" value={clip.start} onCommit={(t) => commit('start', t)} />
+        <TimeField label="End (s)" value={clip.end} onCommit={(t) => commit('end', t)} />
         <label>Length<input readOnly value={`${(clip.end - clip.start).toFixed(1)}s`} /></label>
       </div>
     </div>
+  );
+}
+
+/** Free-typing number box: applies on blur/Enter so partial input (e.g. "1" on the way to "185") isn't clamped mid-typing. */
+function TimeField({ label, value, onCommit }: { label: string; value: number; onCommit: (text: string) => void }) {
+  const [text, setText] = useState(String(+value.toFixed(2)));
+  const editing = useRef(false);
+  useEffect(() => { if (!editing.current) setText(String(+value.toFixed(2))); }, [value]);
+  return (
+    <label>{label}
+      <input type="number" step="0.1" value={text}
+        onFocus={() => { editing.current = true; }}
+        onChange={(e) => setText(e.target.value)}
+        onBlur={() => { editing.current = false; onCommit(text); setText(String(+value.toFixed(2))); }}
+        onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }} />
+    </label>
   );
 }
