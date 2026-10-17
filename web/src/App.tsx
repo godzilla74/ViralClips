@@ -20,7 +20,7 @@ export function App() {
   const [deps, setDeps] = useState<Dep[]>([]);
   useEffect(() => { getSetup().then(setDeps).catch(() => {}); }, [hash === '#/setup']);
   const missing = deps.filter((d) => !d.ok && d.name !== 'ollama');
-  const [, , page, id] = hash.split('/');
+  const [, page, id] = hash.split('/');
 
   return (
     <>
