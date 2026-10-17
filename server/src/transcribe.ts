@@ -11,6 +11,7 @@ export function parseWhisperJson(raw: any): Transcript {
     const text: string = tok.text ?? '';
     if (/^\[_.*\]$/.test(text.trim())) continue; // special tokens
     if (!text.trim()) continue;
+    if (text.startsWith(' ') && !/[\p{L}\p{N}]/u.test(text)) continue; // stray punctuation-only token
     const start = tok.offsets.from / 1000;
     const end = tok.offsets.to / 1000;
     if (cur && !text.startsWith(' ')) {
@@ -36,7 +37,7 @@ export const transcribe: Transcriber = async (wavPath, { modelPath, onProgress }
   const dir = mkdtempSync(join(tmpdir(), 'vc-whisper-'));
   const base = join(dir, 'out');
   try {
-    await runProc('whisper-cli', ['-m', modelPath, '-f', wavPath, '-ojf', '-of', base, '-pp'], (chunk) => {
+    await runProc('whisper-cli', ['-m', modelPath, '-f', wavPath, '-ojf', '-of', base, '-ml', '1', '-sow', '-pp'], (chunk) => {
       const m = [...chunk.matchAll(/progress\s*=\s*(\d+)%/g)].pop();
       if (m) onProgress(Number(m[1]));
     });

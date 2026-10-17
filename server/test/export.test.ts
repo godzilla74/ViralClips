@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { rmSync } from 'node:fs';
+import { existsSync, readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { exportClip } from '../src/export.js';
 import { probe } from '../src/media.js';
@@ -33,5 +33,25 @@ describe('exportClip', () => {
       settings: { ...DEFAULTS, captions: false },
     });
     expect((await probe(path)).height).toBe(1920);
+  }, 60000);
+  it('leaves no partial file behind when ffmpeg fails', async () => {
+    const out = join(makeVideo({ seconds: 2 }).dir, 'o');
+    await expect(exportClip({
+      videoPath: '/definitely/not/here.mp4', clip, words: [], outDir: out, onProgress: () => {},
+      settings: { ...DEFAULTS, captions: false },
+    })).rejects.toThrow();
+    expect(!existsSync(out) || readdirSync(out).length === 0).toBe(true);
+  });
+  it('does not expose the mp4 until it is complete', async () => {
+    const v = makeVideo({ seconds: 4 });
+    const out = join(v.dir, 'o');
+    let sawPartialMp4 = false;
+    const path = await exportClip({
+      videoPath: v.path, clip: { ...clip, start: 0, end: 3 }, words: [], outDir: out,
+      onProgress: (pct) => { if (pct < 100 && existsSync(out) && readdirSync(out).some((f) => f.endsWith('.mp4'))) sawPartialMp4 = true; },
+      settings: { ...DEFAULTS, captions: false },
+    });
+    expect(sawPartialMp4).toBe(false);
+    expect(path.endsWith('.mp4') && existsSync(path)).toBe(true);
   }, 60000);
 });

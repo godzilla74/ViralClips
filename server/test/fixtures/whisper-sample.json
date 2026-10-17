@@ -1,11 +1,56 @@
 {
-  "result": { "language": "en" },
+  "result": {
+    "language": "en"
+  },
   "transcription": [
-    { "text": "[_BEG_]", "offsets": { "from": 0, "to": 0 } },
-    { "text": " Hel", "offsets": { "from": 100, "to": 400 } },
-    { "text": "lo", "offsets": { "from": 400, "to": 700 } },
-    { "text": " world", "offsets": { "from": 800, "to": 1200 } },
-    { "text": ".", "offsets": { "from": 1200, "to": 1300 } },
-    { "text": "[_TT_50]", "offsets": { "from": 1300, "to": 1300 } }
+    {
+      "text": "[_BEG_]",
+      "offsets": {
+        "from": 0,
+        "to": 0
+      }
+    },
+    {
+      "text": " -",
+      "offsets": {
+        "from": 10,
+        "to": 60
+      }
+    },
+    {
+      "text": " Hel",
+      "offsets": {
+        "from": 100,
+        "to": 400
+      }
+    },
+    {
+      "text": "lo",
+      "offsets": {
+        "from": 400,
+        "to": 700
+      }
+    },
+    {
+      "text": " world",
+      "offsets": {
+        "from": 800,
+        "to": 1200
+      }
+    },
+    {
+      "text": ".",
+      "offsets": {
+        "from": 1200,
+        "to": 1300
+      }
+    },
+    {
+      "text": "[_TT_50]",
+      "offsets": {
+        "from": 1300,
+        "to": 1300
+      }
+    }
   ]
 }

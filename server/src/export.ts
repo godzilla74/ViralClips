@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { blankPng, buildCaptionSegments, renderSegmentPng} from './captions.js';
@@ -26,6 +26,7 @@ export async function exportClip(o: ExportOpts): Promise<string> {
   const dur = clip.end - clip.start;
   mkdirSync(o.outDir, { recursive: true });
   const out = join(o.outDir, `${slug(clip.title)}-${clip.id.slice(0, 8)}.mp4`);
+  const part = `${out}.part`; // written here, renamed on success so partial files are never listed/downloaded
   const tmp = mkdtempSync(join(tmpdir(), 'vc-export-'));
   try {
     const args = ['-y', '-ss', String(clip.start), '-t', String(dur), '-i', o.videoPath];
@@ -56,14 +57,18 @@ export async function exportClip(o: ExportOpts): Promise<string> {
     args.push(
       '-filter_complex', graph, '-map', '[vout]', '-map', '0:a?',
       '-t', String(dur), '-c:v', 'libx264', '-crf', '20', '-preset', 'veryfast', '-pix_fmt', 'yuv420p',
-      '-c:a', 'aac', '-b:a', '160k', '-movflags', '+faststart', '-progress', 'pipe:1', '-nostats', out,
+      '-c:a', 'aac', '-b:a', '160k', '-movflags', '+faststart', '-f', 'mp4', '-progress', 'pipe:1', '-nostats', part,
     );
     await runProc('ffmpeg', args, undefined, (chunk) => {
       const m = [...chunk.matchAll(/out_time_us=(\d+)/g)].pop();
       if (m) o.onProgress(Math.min(99, Math.round((Number(m[1]) / 1e6 / dur) * 100)));
     });
+    renameSync(part, out);
     o.onProgress(100);
     return out;
+  } catch (e) {
+    rmSync(part, { force: true });
+    throw e;
   } finally {
     rmSync(tmp, { recursive: true, force: true });
   }
