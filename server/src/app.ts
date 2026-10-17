@@ -19,12 +19,14 @@ import type { LlmProvider } from './llm/types.js';
 import { transcribe as defaultTranscribe, type Transcriber } from './transcribe.js';
 import { extractAudio, probe } from './media.js';
 import { exportClip } from './export.js';
+import { pickVideoFile } from './picker.js';
 import type { Settings } from './types.js';
 
 export interface AppOptions {
   db?: Db; dataDir?: string;
   transcribe?: Transcriber;
   provider?: (s: Settings) => LlmProvider;
+  pickFile?: () => Promise<string | null>;
 }
 
 export function buildApp(opts: AppOptions = {}) {
@@ -56,6 +58,16 @@ export function buildApp(opts: AppOptions = {}) {
     const body = sanitize((req.body ?? {}) as Record<string, unknown>);
     if (!body.openaiKey) delete body.openaiKey; // empty = keep existing
     return publicSettings(saveSettings(body, dataDir));
+  });
+
+  // Native OS file chooser: browsers can't reveal real file paths, but this server runs on the same Mac.
+  app.post('/api/pick-file', async (_req, reply) => {
+    if (!opts.pickFile && process.platform !== 'darwin') return reply.code(501).send({ error: 'The file chooser is only available on macOS. Paste the file path instead.' });
+    try {
+      return { path: await (opts.pickFile ?? pickVideoFile)() };
+    } catch (e) {
+      return reply.code(500).send({ error: (e as Error).message });
+    }
   });
 
   // ---- projects ----

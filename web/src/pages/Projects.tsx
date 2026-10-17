@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { createProjectFromFile, createProjectFromPath, deleteProject, listProjects, type Project } from '../api';
+import { createProjectFromFile, createProjectFromPath, deleteProject, listProjects, pickFile, type Project } from '../api';
 
 const label: Record<Project['status'], string> = {
   new: 'Ready to analyze', transcribing: 'Transcribing…', analyzing: 'Finding clips…', ready: 'Clips ready', error: 'Error',
@@ -37,8 +37,18 @@ export function Projects() {
         <input ref={input} type="file" accept="video/*" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) add(() => createProjectFromFile(f), `Uploading ${f.name}…`); }} />
         {busy || 'Drop a video here, or click to choose a file'}
       </div>
+      <div className="row">
+        <button disabled={!!busy} onClick={() => {
+          setErr(''); setBusy('Choose a video in the macOS window…');
+          pickFile()
+            .then(({ path }) => { if (path) return createProjectFromPath(path).then((p) => { location.hash = `#/p/${p.id}`; }); })
+            .catch((e) => setErr(e.message))
+            .finally(() => setBusy(''));
+        }}>📁 Choose a video file… <span className="small">(recommended — no copy)</span></button>
+        <span className="muted small">Opens the macOS file picker and uses the file where it is.</span>
+      </div>
       <form className="row" onSubmit={(e) => { e.preventDefault(); if (path.trim()) add(() => createProjectFromPath(path.trim()), 'Reading file…'); }}>
-        <input placeholder="…or paste a local file path (avoids copying big files), e.g. /Users/you/Movies/podcast.mp4" value={path} onChange={(e) => setPath(e.target.value)} />
+        <input placeholder="…or paste a file path, e.g. /Users/you/Movies/podcast.mp4" value={path} onChange={(e) => setPath(e.target.value)} />
         <button disabled={!path.trim() || !!busy}>Open</button>
       </form>
       {err && <div className="banner err">{err}</div>}

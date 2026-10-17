@@ -49,3 +49,5 @@ export function subscribeEvents(id: string, cb: (e: JobEvent) => void) {
   es.onmessage = (m) => cb(JSON.parse(m.data));
   return () => es.close();
 }
+
+export const pickFile = () => post('/api/pick-file').then(j<{ path: string | null }>);
