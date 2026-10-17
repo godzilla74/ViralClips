@@ -14,11 +14,11 @@ describe('settings', () => {
     expect(s.captions).toBe(true);
     expect(s.framing).toBe('crop');
   });
-  it('persists with mode 0600 and hides the key publicly', () => {
+  it('persists with mode 0600 (POSIX) and hides the key publicly', () => {
     const d = tmp();
     saveSettings({ openaiKey: 'sk-secret', clipCount: 3 }, d);
     expect(loadSettings(d).clipCount).toBe(3);
-    expect(statSync(join(d, 'config.json')).mode & 0o777).toBe(0o600);
+    if (process.platform !== 'win32') expect(statSync(join(d, 'config.json')).mode & 0o777).toBe(0o600); // Windows has no POSIX modes
     const p = publicSettings(loadSettings(d)) as Record<string, unknown>;
     expect(p.hasKey).toBe(true);
     expect('openaiKey' in p).toBe(false);

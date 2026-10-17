@@ -39,13 +39,13 @@ export function Projects() {
       </div>
       <div className="row">
         <button disabled={!!busy} onClick={() => {
-          setErr(''); setBusy('Choose a video in the macOS window…');
+          setErr(''); setBusy('Choose a video in the file dialog…');
           pickFile()
             .then(({ path }) => { if (path) return createProjectFromPath(path).then((p) => { location.hash = `#/p/${p.id}`; }); })
             .catch((e) => setErr(e.message))
             .finally(() => setBusy(''));
         }}>📁 Choose a video file… <span className="small">(recommended — no copy)</span></button>
-        <span className="muted small">Opens the macOS file picker and uses the file where it is.</span>
+        <span className="muted small">Opens your system's file picker and uses the file where it is.</span>
       </div>
       <form className="row" onSubmit={(e) => { e.preventDefault(); if (path.trim()) add(() => createProjectFromPath(path.trim()), 'Reading file…'); }}>
         <input placeholder="…or paste a file path, e.g. /Users/you/Movies/podcast.mp4" value={path} onChange={(e) => setPath(e.target.value)} />

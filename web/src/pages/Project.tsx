@@ -120,7 +120,7 @@ export function Project({ id }: { id: string }) {
                     {exports.map((x) => (
                       <li key={x.file}>
                         <a href={x.url}>{x.file}</a> <span className="muted small">{(x.size / 1e6).toFixed(1)} MB</span>{' '}
-                        <button className="ghost" onClick={() => api.revealExport(x.url).catch((e) => setError(e.message))}>Show in Finder</button>
+                        <button className="ghost" onClick={() => api.revealExport(x.url).catch((e) => setError(e.message))}>Show in folder</button>
                       </li>
                     ))}
                   </ul>

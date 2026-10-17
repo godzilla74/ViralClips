@@ -18,7 +18,7 @@ export function ExportFolder({ value, onChange }: { value: string; onChange: (di
       <div className="muted small">Save exports to</div>
       <div className="row folder-row">
         <code title={value || 'App folder'}>{value || 'App folder (ViralClips/data/exports)'}</code>
-        <button className="ghost" disabled={busy} onClick={choose}>{busy ? 'Choose in the macOS window…' : '📁 Change…'}</button>
+        <button className="ghost" disabled={busy} onClick={choose}>{busy ? 'Choose in the dialog window…' : '📁 Change…'}</button>
         {value && <button className="ghost" onClick={() => onChange('')}>Use default</button>}
       </div>
       {err && <div className="banner err">{err}</div>}

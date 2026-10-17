@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { existsSync, mkdtempSync, readdirSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { buildApp } from '../src/app.js';
@@ -49,7 +49,10 @@ describe('export destination', () => {
     expect(list[0].folder).toBe(join(v.dir, 'exports', p.id));
   });
   it('reports an unwritable destination as an export error instead of crashing', async () => {
-    const { app, p } = await setup('/proc/definitely/not/writable');
+    // a folder *inside a regular file* can't be created on any OS (ENOTDIR)
+    const blocker = join(mkdtempSync(join(tmpdir(), 'vc-block-')), 'file.txt');
+    writeFileSync(blocker, 'x');
+    const { app, p } = await setup(join(blocker, 'sub'));
     const events: any[] = [];
     app.jobs.subscribe(p.id, (e) => events.push(e));
     await app.inject({ method: 'POST', url: `/api/projects/${p.id}/export`, payload: { settings: { captions: false } } });
