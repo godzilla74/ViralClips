@@ -87,3 +87,7 @@ CI (`.github/workflows/ci.yml`) runs the tests and build on macOS, Windows and L
 Design and plan: `docs/superpowers/specs/`, `docs/superpowers/plans/`.
 
 Caption font: [Montserrat](https://fonts.google.com/specimen/Montserrat) (SIL Open Font License), bundled via npm.
+
+## License
+
+[MIT](LICENSE) © 2026 Justin Farmer
