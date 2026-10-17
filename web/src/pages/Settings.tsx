@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
-import { getSettings, listModels, putSettings, type Settings as S } from '../api';
+import { getSettings, listModels, putSettings, type ModelInfo, type Settings as S } from '../api';
 
 export function Settings() {
   const [s, setS] = useState<S | null>(null);
-  const [models, setModels] = useState<string[]>([]);
+  const [models, setModels] = useState<ModelInfo[]>([]);
   const [modelErr, setModelErr] = useState('');
   const [key, setKey] = useState('');
   const [saved, setSaved] = useState(false);
@@ -38,13 +38,23 @@ export function Settings() {
         <label>Model
           {models.length > 0 ? (
             <select value={s[modelKey]} onChange={(e) => set(modelKey, e.target.value)}>
-              {!models.includes(s[modelKey]) && <option value={s[modelKey]}>{s[modelKey]} (not installed)</option>}
-              {models.map((m) => <option key={m} value={m}>{m}</option>)}
+              {!models.some((m) => m.name === s[modelKey]) && <option value={s[modelKey]}>{s[modelKey]} (not installed)</option>}
+              {models.map((m) => (
+                <option key={m.name} value={m.name}>
+                  {m.name}{m.reasoning ? '  ⚠ reasoning (slow/unreliable)' : m.vision ? '  (vision — extra size unused)' : '  ✓ recommended type'}
+                </option>
+              ))}
             </select>
           ) : (
             <input value={s[modelKey]} placeholder="Model name" onChange={(e) => set(modelKey, e.target.value)} />
           )}
         </label>
+        {models.find((m) => m.name === s[modelKey])?.reasoning && (
+          <div className="banner warn">
+            This is a reasoning model. It can take minutes per section or return nothing. For clip-finding, a plain text model
+            works much better (e.g. qwen2.5:14b, llama3.1:8b, mistral-nemo, phi4, gemma3:12b).
+          </div>
+        )}
         {modelErr && <div className="banner warn">{modelErr}</div>}
         {s.provider === 'openai' && (
           <label>OpenAI API key {s.hasKey && <span className="pill ready">saved</span>}

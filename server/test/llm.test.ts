@@ -49,4 +49,19 @@ describe('OllamaProvider', () => {
     expect(await p.completeJSON('hi')).toBe('{"ok":1}');
     expect(seen[1][1]).toMatchObject({ model: 'a:1', format: 'json', stream: false, think: false });
   });
+  it('explains empty answers from reasoning models instead of returning ""', async () => {
+    const f = (async () => new Response(JSON.stringify({ message: { content: '', thinking: 'hmm let me think…' } }))) as unknown as typeof fetch;
+    await expect(new OllamaProvider('qwen3-vl:8b', f).completeJSON('hi')).rejects.toThrow(/qwen3-vl:8b is a reasoning model.*non-reasoning model/s);
+  });
+  it('describes models with reasoning/vision capabilities from /api/show', async () => {
+    const caps: Record<string, string[]> = { 'a:1': ['completion', 'tools'], 'b:2': ['completion', 'vision', 'thinking'] };
+    const f = (async (url: string, init?: any) => {
+      if (String(url).endsWith('/api/tags')) return new Response(JSON.stringify({ models: [{ name: 'a:1' }, { name: 'b:2' }] }));
+      return new Response(JSON.stringify({ capabilities: caps[JSON.parse(init.body).model] }));
+    }) as unknown as typeof fetch;
+    expect(await new OllamaProvider('a:1', f).describeModels()).toEqual([
+      { name: 'a:1', reasoning: false, vision: false },
+      { name: 'b:2', reasoning: true, vision: true },
+    ]);
+  });
 });

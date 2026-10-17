@@ -250,7 +250,8 @@ export function buildApp(opts: AppOptions = {}) {
 
   app.get('/api/llm/models', async (_req, reply) => {
     try {
-      return await provider(loadSettings(dataDir)).listModels();
+      const p = provider(loadSettings(dataDir));
+      return p.describeModels ? await p.describeModels() : (await p.listModels()).map((name) => ({ name, reasoning: false, vision: false }));
     } catch (e) {
       return reply.code(503).send({ error: (e as Error).message });
     }

@@ -25,7 +25,8 @@ export function putSettings(s: Partial<Settings>) {
   if (!body.openaiKey) delete body.openaiKey;
   return fetch('/api/settings', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }).then(j<Settings>);
 }
-export const listModels = () => fetch('/api/llm/models').then(j<string[]>);
+export interface ModelInfo { name: string; reasoning: boolean; vision: boolean }
+export const listModels = () => fetch('/api/llm/models').then(j<ModelInfo[]>);
 export const listProjects = () => fetch('/api/projects').then(j<Project[]>);
 export const getProject = (id: string) => fetch(`/api/projects/${id}`).then(j<Project>);
 export const deleteProject = (id: string) => fetch(`/api/projects/${id}`, { method: 'DELETE' }).then(j);
