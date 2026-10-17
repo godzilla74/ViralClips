@@ -22,6 +22,10 @@ export function Settings() {
     const { hasKey, openaiKey, ...rest } = s;
     setS(await putSettings({ ...rest, openaiKey: key })); setKey(''); setSaved(true);
   };
+  const switchProvider = async (provider: S['provider']) => {
+    setS({ ...s, provider }); setSaved(false);
+    setS(await putSettings({ provider }).then((r) => ({ ...s, ...r })));
+  };
   const modelKey = s.provider === 'ollama' ? 'ollamaModel' : 'openaiModel';
 
   return (
@@ -29,13 +33,19 @@ export function Settings() {
       <h1>Settings</h1>
       <section className="panel">
         <h3>AI provider</h3>
-        <label className="radio"><input type="radio" checked={s.provider === 'ollama'} onChange={() => set('provider', 'ollama')} /> Ollama <span className="muted">(local, free, private)</span></label>
-        <label className="radio"><input type="radio" checked={s.provider === 'openai'} onChange={() => set('provider', 'openai')} /> OpenAI <span className="muted">(API key, better quality)</span></label>
+        <label className="radio"><input type="radio" checked={s.provider === 'ollama'} onChange={() => switchProvider('ollama')} /> Ollama <span className="muted">(local, free, private)</span></label>
+        <label className="radio"><input type="radio" checked={s.provider === 'openai'} onChange={() => switchProvider('openai')} /> OpenAI <span className="muted">(API key, better quality)</span></label>
         <label>Model
-          <input list="models" value={s[modelKey]} onChange={(e) => set(modelKey, e.target.value)} />
-          <datalist id="models">{models.map((m) => <option key={m} value={m} />)}</datalist>
+          {models.length > 0 ? (
+            <select value={s[modelKey]} onChange={(e) => set(modelKey, e.target.value)}>
+              {!models.includes(s[modelKey]) && <option value={s[modelKey]}>{s[modelKey]} (not installed)</option>}
+              {models.map((m) => <option key={m} value={m}>{m}</option>)}
+            </select>
+          ) : (
+            <input value={s[modelKey]} placeholder="Model name" onChange={(e) => set(modelKey, e.target.value)} />
+          )}
         </label>
-        {modelErr && <div className="banner warn">{modelErr} (Save first if you just switched provider.)</div>}
+        {modelErr && <div className="banner warn">{modelErr}</div>}
         {s.provider === 'openai' && (
           <label>OpenAI API key {s.hasKey && <span className="pill ready">saved</span>}
             <input type="password" placeholder={s.hasKey ? '•••••••• (leave blank to keep)' : 'sk-…'} value={key} onChange={(e) => { setSaved(false); setKey(e.target.value); }} />
