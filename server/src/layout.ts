@@ -30,15 +30,19 @@ export function findPanels(frames: Gray[], o: { cell?: number; threshold?: numbe
   for (const f of frames) for (let i = 0; i < w * h; i++) { const v = f.data[i]; sum[i] += v; sq[i] += v * v; }
 
   const gw = Math.ceil(w / cell), gh = Math.ceil(h / cell);
-  let grid = new Uint8Array(gw * gh);
+  const scores = new Float32Array(gw * gh);
   for (let gy = 0; gy < gh; gy++) for (let gx = 0; gx < gw; gx++) {
     let acc = 0, cnt = 0;
     for (let y = gy * cell; y < Math.min(h, (gy + 1) * cell); y++) for (let x = gx * cell; x < Math.min(w, (gx + 1) * cell); x++) {
       const i = y * w + x, mean = sum[i] / n;
       acc += Math.sqrt(Math.max(0, sq[i] / n - mean * mean)); cnt++;
     }
-    grid[gy * gw + gx] = acc / cnt >= threshold ? 1 : 0;
+    scores[gy * gw + gx] = acc / cnt;
   }
+  // Animated backdrops move a little too, so split "a lot of change" from "a little" automatically (never below `threshold`).
+  const cut = Math.max(threshold, otsu(scores));
+  let grid = new Uint8Array(gw * gh);
+  for (let i = 0; i < grid.length; i++) grid[i] = scores[i] >= cut ? 1 : 0;
   grid = erode(dilate(grid, gw, gh), gw, gh); // close small holes
 
   const seen = new Uint8Array(gw * gh);
@@ -69,6 +73,26 @@ export function findPanels(frames: Gray[], o: { cell?: number; threshold?: numbe
     }
   }
   return out.sort((a, b) => b.cells - a.cells).slice(0, 4).map((c) => c.r);
+}
+
+/** Otsu's method: the cut between two clusters of values (here: background motion vs. panel content). */
+function otsu(values: Float32Array): number {
+  const bins = new Float64Array(256);
+  for (const v of values) bins[Math.min(255, Math.max(0, Math.round(v)))]++;
+  const total = values.length;
+  let sumAll = 0;
+  for (let i = 0; i < 256; i++) sumAll += i * bins[i];
+  let wB = 0, sumB = 0, best = 0, cut = 0;
+  for (let t = 0; t < 256; t++) {
+    wB += bins[t];
+    if (!wB) continue;
+    const wF = total - wB;
+    if (!wF) break;
+    sumB += t * bins[t];
+    const between = wB * wF * (sumB / wB - (sumAll - sumB) / wF) ** 2;
+    if (between > best) { best = between; cut = t + 1; }
+  }
+  return cut;
 }
 
 function dilate(g: Uint8Array, gw: number, gh: number) {
@@ -151,6 +175,14 @@ function cropAround(cx: number, cy: number, wantW: number, aspect: number, bound
   };
 }
 
+/** With no webcam area known, keep the face crop on the face's side of the screen so none of the screen leaks in. */
+function besideScreen(face: Box, screen: Box, whole: Box): Box {
+  const fx = face.x + face.w / 2, sRight = screen.x + screen.w;
+  if (fx > sRight) return { x: sRight, y: 0, w: whole.w - sRight, h: whole.h };
+  if (fx < screen.x) return { x: 0, y: 0, w: screen.x, h: whole.h };
+  return whole;
+}
+
 export function stackGeometry(layout: Layout, src: { w: number; h: number }, style: Settings['faceStyle']): Geometry | null {
   const whole: Box = { x: 0, y: 0, w: src.w, h: src.h };
   const screen = layout.screen ? toPx(layout.screen, src) : null;
@@ -180,8 +212,8 @@ export function stackGeometry(layout: Layout, src: { w: number; h: number }, sty
   const fH = style === 'full' ? even(Math.min(960, maxFaceH)) : fW;
   const content = sH + GAP + fH;
   const top = Math.max(TOP_MIN, Math.round((OUT_H - CAPTION_ZONE - content) / 2));
-  const bounds = panel ?? whole;
-  const fCrop = cropAround(face.x + face.w / 2, face.y + face.h / 2, face.w * 1.9, fW / fH, bounds);
+  const bounds = panel ?? besideScreen(face, screen!, whole);
+  const fCrop = cropAround(face.x + face.w / 2, face.y + face.h / 2, face.w * 1.75, fW / fH, bounds);
   const faceY = top + sH + GAP;
   return {
     screen: { crop: sCrop, dest: { x: Math.round((OUT_W - sW) / 2), y: top, w: sW, h: sH } },

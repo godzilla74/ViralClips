@@ -6,6 +6,9 @@ import { Player } from '../components/Player';
 import { Trimmer } from '../components/Trimmer';
 import { Transcript } from '../components/Transcript';
 import { ExportFolder } from '../components/ExportFolder';
+import { LayoutEditor } from '../components/LayoutEditor';
+import { PreviewPanel } from '../components/PreviewPanel';
+import type { Layout } from '../layout';
 import { ExportOptions } from './Settings';
 
 const fmtT = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
@@ -19,7 +22,9 @@ export function Project({ id }: { id: string }) {
   const [active, setActive] = useState<string>();
   const [job, setJob] = useState<JobEvent | null>(null);
   const [error, setError] = useState('');
-  const [opts, setOpts] = useState<Pick<Settings, 'framing' | 'captions' | 'captionStyle'> | null>(null);
+  const [opts, setOpts] = useState<Pick<Settings, 'framing' | 'captions' | 'captionStyle' | 'faceStyle' | 'outputs'> | null>(null);
+  const [layout, setLayout] = useState<Layout | null>(null);
+  const [layoutVersion, setLayoutVersion] = useState(0);
   const video = useRef<HTMLVideoElement>(null);
   const timers = useRef<Record<string, number>>({});
 
@@ -34,7 +39,8 @@ export function Project({ id }: { id: string }) {
   };
   useEffect(() => {
     load().catch((e) => setError(e.message));
-    api.getSettings().then((s) => { setOpts({ framing: s.framing, captions: s.captions, captionStyle: s.captionStyle }); setExportDir(s.exportDir ?? ''); });
+    api.getSettings().then((s) => { setOpts({ framing: s.framing, captions: s.captions, captionStyle: s.captionStyle, faceStyle: s.faceStyle ?? 'card', outputs: s.outputs ?? 'vertical' }); setExportDir(s.exportDir ?? ''); });
+    api.getLayout(id).then((r) => setLayout(r.layout)).catch(() => {});
     return api.subscribeEvents(id, (e) => {
       if (e.connected) { setJob(e.running ? e : null); if (!e.running) load().catch(() => {}); return; }
       setJob(e.done ? null : e);
@@ -108,6 +114,16 @@ export function Project({ id }: { id: string }) {
             <section className="panel">
               <h3>Export {selected.length} clip{selected.length === 1 ? '' : 's'} · 1080×1920</h3>
               {opts && <ExportOptions s={opts} set={(k, v) => setOpts({ ...opts, [k]: v })} />}
+              {opts && opts.framing === 'stack' && opts.outputs !== 'wide' && (
+                <details className="layout-box" open={!layout}>
+                  <summary>Vertical layout {layout ? <span className="pill ready">saved</span> : <span className="pill error">needs setup</span>}</summary>
+                  <LayoutEditor projectId={id} duration={duration} layout={layout} onSaved={(l) => { setLayout(l); setLayoutVersion((v) => v + 1); }} />
+                </details>
+              )}
+              {opts && activeClip && (
+                <PreviewPanel projectId={id} clipId={activeClip.id} clipLength={activeClip.end - activeClip.start}
+                  opts={opts} outputs={opts.outputs} version={layoutVersion + Math.round(activeClip.start * 10) + Math.round(activeClip.end * 10)} />
+              )}
               <ExportFolder value={exportDir} onChange={(d) => { setExportDir(d); api.putSettings({ exportDir: d }).catch((e) => setError(e.message)); }} />
               <button disabled={running || !selected.length} onClick={() => {
                 setError('');

@@ -29,6 +29,24 @@ describe('findPanels', () => {
   });
 });
 
+describe('findPanels with an animated background', () => {
+  /** Background drifts (std ~19, like an animated OBS backdrop); the screen is full-range noise (std ~73). */
+  function busyBackground(w: number, h: number, screen: [number, number, number, number], n = 12): Gray[] {
+    return Array.from({ length: n }, () => {
+      const data = new Uint8Array(w * h);
+      for (let i = 0; i < w * h; i++) data[i] = 100 + Math.floor((Math.random() - 0.5) * 66);
+      const [x, y, bw, bh] = screen;
+      for (let j = y; j < y + bh; j++) for (let i = x; i < x + bw; i++) data[j * w + i] = Math.floor(Math.random() * 255);
+      return { w, h, data };
+    });
+  }
+  it('still isolates the dominant moving region instead of returning the whole frame', () => {
+    const panels = findPanels(busyBackground(320, 180, [10, 30, 200, 110]));
+    expect(panels).toHaveLength(1);
+    expect(rectNear(panels[0], { x: 10 / 320, y: 30 / 180, w: 200 / 320, h: 110 / 180 })).toBe(true);
+  });
+});
+
 describe('sampleGrayFrames + findPanels on a real video', () => {
   it('detects the screen and webcam rectangles of a composite recording', async () => {
     const c = makeComposite();
@@ -79,6 +97,12 @@ describe('stackGeometry', () => {
     expect(Math.abs(g.face!.crop.w / g.face!.crop.h - g.face!.dest.w / g.face!.dest.h)).toBeLessThan(0.03);
     expect(g.captionY).toBeGreaterThan(g.face!.dest.y);
     expect(g.captionY + 420).toBeLessThanOrEqual(1920);
+  });
+  it('without a webcam area the face crop stays on the far side of the screen', () => {
+    const g = stackGeometry({ screen: layout.screen, face: layout.face, facePanel: null }, src, 'full')!;
+    expect(g.face!.crop.x).toBeGreaterThanOrEqual(Math.round(1340) - 2); // screen's right edge is at x=1340
+    const left = stackGeometry({ screen: { x: 0.35, y: 0.2, w: 0.6, h: 0.6 }, face: { x: 0.08, y: 0.3, w: 0.12, h: 0.2 }, facePanel: null }, src, 'full')!;
+    expect(left.face!.crop.x + left.face!.crop.w).toBeLessThanOrEqual(Math.round(0.35 * 1920) + 2); // face left of screen: stop at its left edge
   });
   it('face only: a 9:16 crop centred on the face', () => {
     const g = stackGeometry({ screen: null, face: layout.face, facePanel: null }, src, 'card')!;

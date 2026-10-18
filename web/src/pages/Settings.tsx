@@ -96,26 +96,47 @@ export function Settings() {
   );
 }
 
-export function ExportOptions({ s, set }: { s: Pick<S, 'framing' | 'captions' | 'captionStyle'>; set: <K extends 'framing' | 'captions' | 'captionStyle'>(k: K, v: S[K]) => void }) {
+type ExportKeys = 'framing' | 'captions' | 'captionStyle' | 'faceStyle' | 'outputs';
+
+export function ExportOptions({ s, set }: { s: Pick<S, ExportKeys>; set: <K extends ExportKeys>(k: K, v: S[K]) => void }) {
   return (
-    <div className="row3">
-      <label>Framing
-        <select value={s.framing} onChange={(e) => set('framing', e.target.value as S['framing'])}>
-          <option value="crop">Fill (center crop)</option>
-          <option value="blur">Fit on blurred background</option>
-          <option value="original">Fit with black bars</option>
-        </select>
-      </label>
-      <label>Captions
-        <select value={s.captions ? 'on' : 'off'} onChange={(e) => set('captions', e.target.value === 'on')}>
-          <option value="on">On</option><option value="off">Off</option>
-        </select>
-      </label>
-      <label>Caption style
-        <select value={s.captionStyle} disabled={!s.captions} onChange={(e) => set('captionStyle', e.target.value as S['captionStyle'])}>
-          <option value="karaoke">Word highlight</option><option value="bold">Bold</option><option value="clean">Clean</option>
-        </select>
-      </label>
-    </div>
+    <>
+      <div className="row3">
+        <label>Export format
+          <select value={s.outputs} onChange={(e) => set('outputs', e.target.value as S['outputs'])}>
+            <option value="vertical">Vertical 9:16 (TikTok / Reels / Shorts)</option>
+            <option value="wide">Widescreen 16:9 (original shape)</option>
+            <option value="both">Both</option>
+          </select>
+        </label>
+        <label>Vertical framing
+          <select value={s.framing} disabled={s.outputs === 'wide'} onChange={(e) => set('framing', e.target.value as S['framing'])}>
+            <option value="stack">Smart stack (screen on top, face below)</option>
+            <option value="crop">Fill (center crop)</option>
+            <option value="blur">Fit on blurred background</option>
+            <option value="original">Fit with black bars</option>
+          </select>
+        </label>
+        <label>Face panel (smart stack)
+          <select value={s.faceStyle} disabled={s.outputs === 'wide' || s.framing !== 'stack'} onChange={(e) => set('faceStyle', e.target.value as S['faceStyle'])}>
+            <option value="card">Centred card (sharper)</option>
+            <option value="full">Full width</option>
+          </select>
+        </label>
+      </div>
+      <div className="row3">
+        <label>Captions
+          <select value={s.captions ? 'on' : 'off'} onChange={(e) => set('captions', e.target.value === 'on')}>
+            <option value="on">On</option><option value="off">Off</option>
+          </select>
+        </label>
+        <label>Caption style
+          <select value={s.captionStyle} disabled={!s.captions} onChange={(e) => set('captionStyle', e.target.value as S['captionStyle'])}>
+            <option value="karaoke">Word highlight</option><option value="bold">Bold</option><option value="clean">Clean</option>
+          </select>
+        </label>
+        <span />
+      </div>
+    </>
   );
 }

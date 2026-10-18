@@ -3,3 +3,4 @@ data
 dist
 .DS_Store
 .superpowers
+web/public/mediapipe

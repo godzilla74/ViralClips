@@ -12,8 +12,11 @@ and by the setup script below — please open an issue if something misbehaves o
 - Drop in an hour-long video → a ranked list of the most shareable 30–60 second moments, each with a title,
   a one-line reason, a quote of what is actually said, and a score.
 - Preview each clip, trim it with draggable handles, rename it, pick the ones you want.
-- Export vertical 1080×1920 MP4s with word-by-word captions (three caption styles, three framing options)
-  to any folder you choose.
+- Export **vertical 1080×1920**, **widescreen**, or **both**, with word-by-word captions (three caption styles),
+  to any folder you choose. A **preview** shows exactly what each export will look like before you render it.
+- **Smart stack** for screen-share + webcam recordings: the screen goes on top and your face below. The app finds
+  the screen panel and your face for you (face detection runs in your browser; nothing is sent anywhere) and you can
+  drag the boxes to fix anything it got wrong.
 - Free and private: transcription (whisper.cpp) and clip-finding (Ollama) run on your own machine.
 
 **Requirements:** Node.js 22+; about 1 GB of disk for the app and the speech model, plus 2–9 GB for a text model
@@ -69,7 +72,10 @@ The server only listens on `127.0.0.1` and rejects requests from other origins/h
 3. Review ranked clips. Each shows the AI's title and reason, plus a snippet of what is actually said;
    the transcript pane marks where the clip starts and ends.
 4. Trim with the handles, rename, tick the clips to export.
-5. **Export** → 1080×1920 MP4s (center-crop, blurred-background or bars; word-highlight, bold or clean captions).
+5. Choose the **export format** (vertical, widescreen or both) and the vertical framing. For a recording with a
+   screen share and a webcam pick **Smart stack**, open **Vertical layout**, click **Detect screen & face**, adjust the
+   boxes if needed and **Save layout** (once per video). The **Preview** under the options updates as you change things.
+6. **Export** → MP4s (vertical: smart stack, center-crop, blurred background or bars; word-highlight, bold or clean captions).
    Choose **where to save** with the folder picker; default is `data/exports/`. Deleting a project never deletes
    files you exported to your own folder.
 
@@ -123,7 +129,7 @@ Typical speed on a 16 GB Apple-silicon Mac: transcription runs far faster than r
 
 | Setting | Where | Default |
 |---|---|---|
-| Provider, model, API key, clip length, count, framing, caption style, export folder | **Settings** page (saved in `data/config.json`) | Ollama, `qwen2.5:14b`, 30–60 s, 10 clips, center crop, word highlight |
+| Provider, models, API key, clip length, count, export format, framing, caption style, export folder | **Settings** page (saved in `data/config.json`) | Ollama, `qwen2.5:14b`, 30–60 s, 10 clips, center crop, word highlight |
 | `VC_DATA` | env var | `./data` — where the database, models, uploads and exports live |
 | `VC_WHISPER` | env var | auto: `data/bin`, then your `PATH` |
 | `PORT` | env var | `4777` |
@@ -131,7 +137,8 @@ Typical speed on a 16 GB Apple-silicon Mac: transcription runs far faster than r
 ## Limitations
 
 - **English only** for now: the bundled speech model is `ggml-small.en`.
-- Framing is a center crop (or blurred/bars) — no face tracking or auto-reframe yet.
+- Smart stack uses one fixed layout per video (a screen-share + webcam recording). Layouts that change mid-video,
+  and a face that moves around the frame, aren't tracked yet. Other framings are a center crop, blurred background or bars.
 - No direct posting to TikTok / Instagram / YouTube yet; you export files and upload them yourself.
 - Clip quality depends on the model. A 12–14B local model is decent, not perfect — the quote under each clip title
   lets you verify what it picked. OpenAI models are better but send the transcript text to OpenAI.
@@ -163,6 +170,9 @@ npm test          # server + web tests; needs ffmpeg on PATH (whisper and Ollama
 
 CI (`.github/workflows/ci.yml`) runs the tests and build on macOS, Windows and Linux.
 Design and plan: `docs/superpowers/specs/`, `docs/superpowers/plans/`.
+
+Face detection: [MediaPipe](https://ai.google.dev/edge/mediapipe) BlazeFace (Apache 2.0), run in the browser; its small
+model file is in `web/public/models/`.
 
 Caption font: [Montserrat](https://fonts.google.com/specimen/Montserrat) (SIL Open Font License), bundled via npm.
 
