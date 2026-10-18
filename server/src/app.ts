@@ -9,7 +9,7 @@ import { pipeline } from 'node:stream/promises';
 import { DATA_DIR, loadSettings, publicSettings, sanitize, saveSettings } from './config.js';
 import { checkDeps } from './deps.js';
 import {
-  addExport, createProject, deleteProject, listExportPaths, getClip, getProject, getTranscript, listClips, listProjects, openDb,
+  addExport, createProject, deleteProject, getLayout, listExportPaths, setLayout, getClip, getProject, getTranscript, listClips, listProjects, openDb,
   replaceClips, resetInterrupted, saveTranscript, setProjectStatus, updateClip, type Db,
 } from './db.js';
 import { findClips } from './clips/find.js';
@@ -19,6 +19,9 @@ import type { LlmProvider } from './llm/types.js';
 import { transcribe as defaultTranscribe, type Transcriber } from './transcribe.js';
 import { extractAudio, probe } from './media.js';
 import { exportClip } from './export.js';
+import { findPanels, sampleGrayFrames, validateLayout } from './layout.js';
+import { planRender, renderPreview, type Kind } from './render.js';
+import { execFile } from 'node:child_process';
 import { pickFolder as defaultPickFolder, pickVideoFile } from './picker.js';
 import { revealPath } from './platform.js';
 import type { Settings } from './types.js';
@@ -235,24 +238,39 @@ export function buildApp(opts: AppOptions = {}) {
     const settings = { ...loadSettings(dataDir), ...sanitize((body.settings ?? {}) as Record<string, unknown>) };
     const outDir = settings.exportDir || defaultExportsDir(id);
     const words = getTranscript(db, id)?.words ?? [];
+    const kinds: Kind[] = settings.outputs === 'both' ? ['vertical', 'wide'] : settings.outputs === 'wide' ? ['wide'] : ['vertical'];
+    const layout = getLayout(db, id);
+    let src: { w: number; h: number };
+    try {
+      const info = await probe(proj.videoPath);
+      src = { w: info.width, h: info.height };
+      for (const kind of kinds) planRender(kind, settings, layout, src); // fail fast, e.g. stack without a layout
+    } catch (e) {
+      return reply.code(400).send({ error: (e as Error).message });
+    }
+    const steps = clips.length * kinds.length;
     void jobs.runExclusive(id, async () => {
       try {
-        for (const [i, clip] of clips.entries()) {
-          const file = await exportClip({
-            videoPath: proj.videoPath, clip, words, settings, outDir,
-            onProgress: (p) => jobs.emit(id, {
-              stage: 'export', pct: Math.round(((i + p / 100) / clips.length) * 100),
-              message: `Exporting clip ${i + 1} of ${clips.length}`,
-            }),
-          });
-          addExport(db, id, file);
+        let step = 0;
+        for (const clip of clips) {
+          for (const kind of kinds) {
+            const n = step++;
+            const file = await exportClip({
+              videoPath: proj.videoPath, clip, words, settings, outDir, kind, layout, src,
+              onProgress: (p) => jobs.emit(id, {
+                stage: 'export', pct: Math.round(((n + p / 100) / steps) * 100),
+                message: `Exporting ${kind === 'wide' ? 'widescreen' : 'vertical'} clip ${n + 1} of ${steps}`,
+              }),
+            });
+            addExport(db, id, file);
+          }
         }
         jobs.emit(id, { stage: 'export', pct: 100, done: true });
       } catch (e) {
         jobs.emit(id, { stage: 'export', pct: 0, error: `Export failed: ${(e as Error).message}`, done: true });
       }
     });
-    return reply.code(202).send({ started: true, count: clips.length, folder: outDir });
+    return reply.code(202).send({ started: true, count: steps, clips: clips.length, folder: outDir });
   });
 
   app.get('/api/projects/:id/exports', async (req) => {
@@ -283,6 +301,84 @@ export function buildApp(opts: AppOptions = {}) {
       return { ok: true };
     } catch (e) {
       return reply.code(500).send({ error: `Could not open the file manager: ${(e as Error).message}` });
+    }
+  });
+
+  // ---- vertical layout (screen share + webcam) ----
+  app.get('/api/projects/:id/layout', async (req, reply) => {
+    const id = (req.params as any).id as string;
+    if (!getProject(db, id)) return reply.code(404).send({ error: 'Not found' });
+    return { layout: getLayout(db, id) };
+  });
+
+  app.put('/api/projects/:id/layout', async (req, reply) => {
+    const id = (req.params as any).id as string;
+    if (!getProject(db, id)) return reply.code(404).send({ error: 'Not found' });
+    try {
+      const layout = validateLayout(req.body);
+      setLayout(db, id, layout);
+      return { layout };
+    } catch (e) {
+      return reply.code(400).send({ error: (e as Error).message });
+    }
+  });
+
+  /** Finds moving panels from sampled frames; the browser finds the face on frames from /frame. */
+  app.get('/api/projects/:id/layout/analyze', async (req, reply) => {
+    const id = (req.params as any).id as string;
+    const proj = getProject(db, id);
+    if (!proj) return reply.code(404).send({ error: 'Not found' });
+    try {
+      const { frames, width, height } = await sampleGrayFrames(proj.videoPath, proj.duration, 24);
+      const times = Array.from({ length: 10 }, (_, i) => +((proj.duration * (i + 0.5)) / 10).toFixed(2));
+      return { panels: findPanels(frames), width, height, times, duration: proj.duration };
+    } catch (e) {
+      return reply.code(500).send({ error: (e as Error).message });
+    }
+  });
+
+  app.get('/api/projects/:id/frame', async (req, reply) => {
+    const proj = getProject(db, (req.params as any).id);
+    const t = Number((req.query as any).t);
+    if (!proj) return reply.code(404).send({ error: 'Not found' });
+    if (!Number.isFinite(t) || t < 0) return reply.code(400).send({ error: 'Invalid t' });
+    const jpeg = await new Promise<Buffer>((resolve, reject) =>
+      execFile('ffmpeg', ['-v', 'error', '-ss', String(Math.min(t, Math.max(0, proj.duration - 0.1))), '-i', proj.videoPath,
+        '-frames:v', '1', '-vf', 'scale=960:-2', '-q:v', '3', '-f', 'mjpeg', 'pipe:1'],
+      { encoding: 'buffer', maxBuffer: 16 * 1024 * 1024 }, (e, out) => (e || !out.length ? reject(e ?? new Error('no frame')) : resolve(out))))
+      .catch(() => null);
+    if (!jpeg) return reply.code(500).send({ error: 'Could not read a frame from the video' });
+    return reply.header('content-type', 'image/jpeg').header('cache-control', 'private, max-age=300').send(jpeg);
+  });
+
+  // ---- preview: one still, rendered with exactly the export's filter graph ----
+  app.get('/api/projects/:id/preview', async (req, reply) => {
+    const id = (req.params as any).id as string;
+    const q = req.query as Record<string, string | undefined>;
+    const proj = getProject(db, id);
+    if (!proj) return reply.code(404).send({ error: 'Not found' });
+    const clip = listClips(db, id).find((c) => c.id === q.clip);
+    if (!clip) return reply.code(404).send({ error: 'Clip not found' });
+    if (q.kind !== 'vertical' && q.kind !== 'wide') return reply.code(400).send({ error: 'kind must be vertical or wide' });
+    const tNum = q.t === undefined ? (clip.end - clip.start) / 2 : Number(q.t);
+    if (!Number.isFinite(tNum)) return reply.code(400).send({ error: 'Invalid t' });
+    const settings = {
+      ...loadSettings(dataDir),
+      ...sanitize({
+        framing: q.framing, faceStyle: q.faceStyle, captionStyle: q.captionStyle,
+        ...(q.captions !== undefined ? { captions: q.captions === '1' || q.captions === 'true' } : {}),
+      }),
+    };
+    try {
+      const info = await probe(proj.videoPath);
+      const png = await renderPreview({
+        videoPath: proj.videoPath, clip, words: getTranscript(db, id)?.words ?? [], settings,
+        layout: getLayout(db, id), src: { w: info.width, h: info.height }, kind: q.kind, t: tNum,
+      });
+      return reply.header('content-type', 'image/png').header('cache-control', 'no-store').send(png);
+    } catch (e) {
+      const message = (e as Error).message;
+      return reply.code(/layout/i.test(message) ? 400 : 500).send({ error: message });
     }
   });
 

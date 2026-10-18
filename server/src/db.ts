@@ -2,7 +2,7 @@ import Database from 'better-sqlite3';
 import { randomUUID } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
-import type { Clip, Project, Transcript } from './types.js';
+import type { Clip, Layout, Project, Transcript } from './types.js';
 
 export type Db = Database.Database;
 
@@ -26,6 +26,9 @@ export function openDb(path: string): Db {
       path TEXT NOT NULL UNIQUE, created_at INTEGER NOT NULL
     );
   `);
+  if (!(db.prepare('PRAGMA table_info(projects)').all() as { name: string }[]).some((c) => c.name === 'layout')) {
+    db.exec('ALTER TABLE projects ADD COLUMN layout TEXT'); // per-video screen/face layout (JSON)
+  }
   db.pragma('foreign_keys = ON');
   return db;
 }
@@ -99,3 +102,11 @@ export function addExport(db: Db, projectId: string, path: string) {
 }
 export const listExportPaths = (db: Db, projectId: string): string[] =>
   (db.prepare('SELECT path FROM exports WHERE project_id=? ORDER BY created_at DESC').all(projectId) as { path: string }[]).map((r) => r.path);
+
+export function getLayout(db: Db, id: string): Layout | null {
+  const r = db.prepare('SELECT layout FROM projects WHERE id=?').get(id) as { layout?: string } | undefined;
+  return r?.layout ? (JSON.parse(r.layout) as Layout) : null;
+}
+export function setLayout(db: Db, id: string, layout: Layout) {
+  db.prepare('UPDATE projects SET layout=? WHERE id=?').run(JSON.stringify(layout), id);
+}

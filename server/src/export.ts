@@ -1,36 +1,38 @@
 import { mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { blankPng, buildCaptionSegments, renderSegmentPng} from './captions.js';
-import { runProc } from './media.js';
-import type { Clip, Settings, Word } from './types.js';
+import { blankPng, buildCaptionSegments, renderSegmentPng } from './captions.js';
+import { probe, runProc } from './media.js';
+import { buildGraph, planRender, type Kind } from './render.js';
+import type { Clip, Layout, Settings, Word } from './types.js';
 
 export interface ExportOpts {
   videoPath: string; clip: Clip; words: Word[]; settings: Settings;
   outDir: string; onProgress: (pct: number) => void;
+  /** 'vertical' (default) = 1080x1920; 'wide' = source resolution. */
+  kind?: Kind;
+  /** Needed for the 'stack' framing. */
+  layout?: Layout | null;
+  src?: { w: number; h: number };
 }
-
-const BASE: Record<Settings['framing'], string> = {
-  crop: '[0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1',
-  blur:
-    '[0:v]split=2[a][b];[a]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=40:6[bg];' +
-    '[b]scale=1080:1920:force_original_aspect_ratio=decrease[fg];[bg][fg]overlay=(W-w)/2:(H-h)/2,setsar=1',
-  original: '[0:v]scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2,setsar=1',
-};
 
 const slug = (s: string) =>
   s.normalize('NFKD').replace(/[^\w\s-]/g, '').trim().replace(/\s+/g, '-').toLowerCase().slice(0, 40) || 'clip';
 
 export async function exportClip(o: ExportOpts): Promise<string> {
   const { clip, settings } = o;
+  const kind = o.kind ?? 'vertical';
   const dur = clip.end - clip.start;
+  let src = o.src;
+  if (!src) { const i = await probe(o.videoPath); src = { w: i.width, h: i.height }; }
+  const plan = planRender(kind, settings, o.layout ?? null, src); // throws before anything is written
   mkdirSync(o.outDir, { recursive: true });
-  const out = join(o.outDir, `${slug(clip.title)}-${clip.id.slice(0, 8)}.mp4`);
+  const out = join(o.outDir, `${slug(clip.title)}-${clip.id.slice(0, 8)}-${kind}.mp4`);
   const part = `${out}.part`; // written here, renamed on success so partial files are never listed/downloaded
   const tmp = mkdtempSync(join(tmpdir(), 'vc-export-'));
   try {
     const args = ['-y', '-ss', String(clip.start), '-t', String(dur), '-i', o.videoPath];
-    let graph = `${BASE[settings.framing]}[vout]`;
+    let withCaptions = false;
 
     const clipWords = o.words.filter((w) => w.end > clip.start && w.start < clip.end);
     const segs = settings.captions ? buildCaptionSegments(clipWords, clip.start, settings.captionStyle) : [];
@@ -50,9 +52,9 @@ export async function exportClip(o: ExportOpts): Promise<string> {
       lines.push(`file 'blank.png'`, `duration ${Math.max(dur - cursor, 0.1).toFixed(3)}`, `file 'blank.png'`);
       writeFileSync(join(tmp, 'list.txt'), lines.join('\n'));
       args.push('-f', 'concat', '-safe', '0', '-i', join(tmp, 'list.txt'));
-      graph = `${BASE[settings.framing]}[v0];[1:v]format=rgba[cap];` +
-        `[v0][cap]overlay=0:${Math.round(1920 * 0.58)}:eof_action=pass[vout]`;
+      withCaptions = true;
     }
+    const graph = buildGraph(plan, withCaptions);
 
     args.push(
       '-filter_complex', graph, '-map', '[vout]', '-map', '0:a?',

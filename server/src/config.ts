@@ -18,6 +18,8 @@ export const DEFAULTS: Settings = {
   captions: true,
   framing: 'crop',
   captionStyle: 'karaoke',
+  faceStyle: 'card',
+  outputs: 'vertical',
   exportDir: '',
 };
 
@@ -32,7 +34,8 @@ export function loadSettings(dir = DATA_DIR): Settings {
 }
 
 const ENUMS = {
-  provider: ['ollama', 'openai'], framing: ['crop', 'blur', 'original'], captionStyle: ['bold', 'clean', 'karaoke'],
+  provider: ['ollama', 'openai'], framing: ['crop', 'blur', 'original', 'stack'], captionStyle: ['bold', 'clean', 'karaoke'],
+  faceStyle: ['card', 'full'], outputs: ['vertical', 'wide', 'both'],
 } as const;
 const NUMS: Record<string, [number, number]> = { clipMinSec: [5, 600], clipMaxSec: [10, 900], clipCount: [1, 30] };
 const STRS = ['ollamaModel', 'openaiModel', 'visionModel', 'openaiKey'] as const;
